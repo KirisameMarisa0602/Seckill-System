@@ -19,7 +19,7 @@ public class UserMapperTest {
     @Test
     public void testInsertAndSelectUser() {
         // 1. 构建测试数据 (主键是手机号，使用 INPUT 策略)
-        Long phoneId = 13800138000L;
+        Long phoneId = 13800138001L;
         User user = User.builder()
                 .id(phoneId)
                 .nickname("Marisa")
