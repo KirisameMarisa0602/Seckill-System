@@ -8,7 +8,7 @@
         <version>4.0.7</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.KirisameMarisa</groupId>
+    <groupId>com.kirisamemarisa</groupId>
     <artifactId>Seckill-System</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Seckill-System</name>
