@@ -14,25 +14,20 @@ public class RabbitMQConfig {
     public static final String SECKILL_QUEUE = "seckillQueue";
     public static final String SECKILL_EXCHANGE = "seckillExchange";
     public static final String ROUTING_KEY = "seckill.#";
-
     @Bean
     public Queue seckillQueue() {
-        // name, durable(持久化), exclusive(排他), autoDelete(自动删除)
         return new Queue(SECKILL_QUEUE, true);
     }
-
     @Bean
     public TopicExchange seckillExchange() {
         return new TopicExchange(SECKILL_EXCHANGE);
     }
-
     @Bean
     public Binding seckillBinding() {
         return BindingBuilder.bind(seckillQueue())
                 .to(seckillExchange())
                 .with(ROUTING_KEY);
     }
-
     @Bean
     public MessageConverter messageConverter() {
         return new Jackson2JsonMessageConverter();

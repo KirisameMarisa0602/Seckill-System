@@ -25,16 +25,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     private SeckillOrderMapper seckillOrderMapper;
     @Autowired
     private RedisTemplate redisTemplate;
-
     @Transactional
     @Override
     public OrderInfo createSeckillOrder(User user, GoodsVo goods) {
         int updateRows = seckillGoodsMapper.decrementStock(goods.getId());
-
         if (updateRows < 1) {
             return null;
         }
-
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setUserId(user.getId());
         orderInfo.setGoodsId(goods.getId());
@@ -58,7 +55,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 orderInfo.getId(),
                 1, TimeUnit.HOURS
         );
-
         return orderInfo;
     }
 }

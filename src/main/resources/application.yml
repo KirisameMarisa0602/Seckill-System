@@ -30,6 +30,9 @@ spring:
     virtual-host: /
     publisher-confirm-type: correlated
     publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
 
 mybatis-plus:
   configuration:
