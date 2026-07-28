@@ -8,7 +8,7 @@
         <version>4.0.7</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.KirisameMarisa</groupId>
+    <groupId>com.kirisamemarisa</groupId>
     <artifactId>Seckill-System</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Seckill-System</name>
@@ -34,10 +34,18 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
+
+        <!-- ✅ 引入专为 Spring Boot 4 适配的 MyBatis-Plus 启动器 -->
         <dependency>
-            <groupId>org.mybatis.spring.boot</groupId>
-            <artifactId>mybatis-spring-boot-starter</artifactId>
-            <version>4.0.1</version>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+            <version>3.5.16</version>
+        </dependency>
+        <!-- 高版本拆分了分页和SQL解析器，引入防止后续业务报错 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>3.5.16</version>
         </dependency>
 
         <dependency>
@@ -52,14 +60,18 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.mybatis.spring.boot</groupId>
-            <artifactId>mybatis-spring-boot-starter-test</artifactId>
-            <version>4.0.1</version>
-            <scope>test</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Redis 连接池依赖 (底层 Lettuce 需要此包提供连接池能力) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
         </dependency>
     </dependencies>
 

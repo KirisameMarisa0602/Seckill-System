@@ -8,6 +8,21 @@ spring:
     username: root
     password: 20050602
 
-mybatis:
+  data:
+    redis:
+      host: 127.0.0.1  # 你的本地Redis地址
+      port: 6379       # Redis端口
+      password:        # 如果你的Redis设置了密码，填在这里；如果没有密码，留空即可
+      database: 0      # 默认使用0号库
+      timeout: 3000ms  # 连接超时时间
+      lettuce:
+        pool:
+          max-active: 8   # 连接池最大连接数
+          max-wait: -1ms  # 最大阻塞等待时间(负数表示没限制)
+          max-idle: 8     # 最大空闲连接
+          min-idle: 0     # 最小空闲连接
+
+mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
