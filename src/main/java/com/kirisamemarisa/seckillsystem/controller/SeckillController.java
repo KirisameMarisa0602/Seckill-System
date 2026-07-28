@@ -41,11 +41,11 @@ public class SeckillController implements InitializingBean {
                 seckillScript,
                 Arrays.asList(
                         "seckillGoods:" + goodsId,
-                        "seckillUserOrder:" + user.getId() + ":" + goodsId
+                        "seckillUserOrder:" + user.getId() + ":" + goodsId,
+                        "isStockEmpty:" + goodsId
                 )
         );
         if (result == null || result == 0L) {
-            redisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "0");
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);

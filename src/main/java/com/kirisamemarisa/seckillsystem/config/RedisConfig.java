@@ -10,7 +10,6 @@ import org.springframework.data.redis.serializer.RedisSerializer;
 
 @Configuration
 public class RedisConfig {
-
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
@@ -22,7 +21,6 @@ public class RedisConfig {
         template.afterPropertiesSet();
         return template;
     }
-
     @Bean
     public DefaultRedisScript<Long> seckillScript() {
         DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
