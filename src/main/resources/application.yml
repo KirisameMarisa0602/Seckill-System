@@ -22,6 +22,16 @@ spring:
           max-idle: 8     # 最大空闲连接
           min-idle: 0     # 最小空闲连接
 
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    # 开启发送确认机制，保证消息绝对投递成功（大厂必备兜底）
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
