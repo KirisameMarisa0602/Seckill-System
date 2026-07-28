@@ -7,9 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 @MapperScan("com.kirisamemarisa.seckillsystem.mapper")
 public class SeckillSystemApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(SeckillSystemApplication.class, args);
     }
-
 }

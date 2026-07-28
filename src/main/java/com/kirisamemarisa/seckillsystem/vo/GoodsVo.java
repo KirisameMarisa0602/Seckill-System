@@ -14,7 +14,6 @@ import java.util.Date;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class GoodsVo extends Goods {
-    // 冗余 t_seckill_goods 里的字段
     private BigDecimal seckillPrice;
     private Integer stockCount;
     private Date startDate;
