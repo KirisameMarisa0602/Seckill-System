@@ -10,7 +10,7 @@ if redis.call('exists', stockKey) == 1 then
     local stock = tonumber(redis.call('get', stockKey))
     if stock > 0 then
         redis.call('decr', stockKey)
-        redis.call('set', userOrderKey, 1)
+        redis.call('set', userOrderKey, 1, 'EX', 3600)
         return 1
     end
 end
