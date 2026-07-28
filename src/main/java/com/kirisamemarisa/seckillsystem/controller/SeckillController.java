@@ -4,105 +4,127 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.kirisamemarisa.seckillsystem.entity.SeckillOrder;
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillOrderMapper;
-import com.kirisamemarisa.seckillsystem.mapper.UserMapper;
-import com.kirisamemarisa.seckillsystem.service.IGoodsService;
-import com.kirisamemarisa.seckillsystem.service.IOrderService;
-import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
+import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
+import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Collections;
-import java.util.concurrent.TimeUnit;
+import org.springframework.beans.factory.InitializingBean;
+import com.kirisamemarisa.seckillsystem.service.IGoodsService;
+import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
+import java.util.List;
 
 @RestController
 @RequestMapping("/seckill")
-public class SeckillController {
+public class SeckillController implements InitializingBean{
+
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired
+    private MQSender mqSender;
+
+    // 引进这把利器，用来直接查记录
+    @Autowired
+    private SeckillOrderMapper seckillOrderMapper;
 
     @Autowired
     private IGoodsService goodsService;
-    @Autowired
-    private IOrderService orderService;
-    @Autowired
-    private SeckillOrderMapper seckillOrderMapper;
-    @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @Autowired
-    private DefaultRedisScript<Long> seckillScript;
 
     /**
-     * V2.0: 全面 Redis 缓存化，实现入口 0 DB 访问
+     * V3.0 异步终极版：秒杀接口
      */
-    @PostMapping("/doSeckillV20")
-    public RespBean doSeckillV20(Long userId, Long goodsId) {
-        if (userId == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
-
-        // ==========================================
-        // 核心改造 1：拦截查库判重！先查 Redis 中是否已有该用户的秒杀成功标记
-        // ==========================================
-        // KEY的设计规范：系统标识:模块:商品ID:用户ID (例 seckill:order:1:18888888888)
-        String orderKey = "seckill:order:" + goodsId + ":" + userId;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(orderKey))) {
-            return RespBean.error(RespBeanEnum.REPEAT_ERROR);
-        }
-
-        // ==========================================
-        // 核心改造 2：不再直接查 DB 拿信息，加入旁路缓存机制 (Cache-Aside)
-        // ==========================================
-        // 2.1 缓存验证用户
-        User user = (User) redisTemplate.opsForValue().get("user:" + userId);
+    @RequestMapping(value = "/doSeckill", method = RequestMethod.POST)
+    @ResponseBody
+    public RespBean doSeckill(User user, Long goodsId) {
         if (user == null) {
-            user = userMapper.selectById(userId);
-            if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
-            // 写回 Redis，并设置过期时间（模拟登录态 Token 时效）
-            redisTemplate.opsForValue().set("user:" + userId, user, 30, TimeUnit.MINUTES);
+            return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
 
-        // 2.2 缓存验证商品
-        GoodsVo goods = (GoodsVo) redisTemplate.opsForValue().get("goodsVo:" + goodsId);
-        if (goods == null) {
-            goods = goodsService.findGoodsVoByGoodsId(goodsId);
-            if (goods == null) { return RespBean.error(RespBeanEnum.EMPTY_STOCK); }
-            // 秒杀商品信息通常不会变动，缓存 1 分钟或直到活动结束
-            redisTemplate.opsForValue().set("goodsVo:" + goodsId, goods, 1, TimeUnit.MINUTES);
-        }
+        // 1. 利用 Redis 的 decrement 原子操作，预减库存
+        Long stock = redisTemplate.opsForValue().decrement("seckillGoods:" + goodsId);
 
-        // ==========================================
-        // 核心改造 3（已完成）：原子扣减库存
-        // ==========================================
-        String stockKey = "seckill:stock:" + goodsId;
-        Long res = redisTemplate.execute(seckillScript, Collections.singletonList(stockKey));
+        if (stock < 0) {
+            // 说明卖光了，加回库存防止负数
+            redisTemplate.opsForValue().increment("seckillGoods:" + goodsId);
 
-        if (res == null || res == 0L) {
+            // 🔥给这个商品打上一个“售罄”的红叉标记，存入Redis (很重要，下面轮询要用)
+            redisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "0");
+
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         }
 
-        // ==========================================
-        // 核心改造 4：前置锁定防重拦截，记录该用户已经抢购过了！
-        // ==========================================
-        // 走到这说明秒杀Lua通过了，立马把用户ID刻在 Redis 里拦截他后续可能发狂点的重复请求
-        // 设置 15 分钟存活（对应由于后续死信队列会处理未支付订单的时间）
-        redisTemplate.opsForValue().set(orderKey, "1", 15, TimeUnit.MINUTES);
+        // 2. 扔小票（封装秒杀消息）
+        SeckillMessage message = new SeckillMessage(user, goodsId);
 
-        try {
-            // 当前这行还会同步查一次 MYSQL (生成订单的写操作)
-            // 别急，这就是我们下一个 PR 的大招：RabbitMQ 取代它！
-            orderService.createSeckillOrder(user, goods);
-            return RespBean.success("秒杀成功！");
-        } catch (Exception e) {
-            // ⚠️ 极小概率异常兜底：如果在写 DB 环节发生系统异常（比如MySQL刚好断连）
-            // 需要回滚 Redis 里的标识，避免用户永久错失购买机会（真实大厂补偿逻辑）
-            redisTemplate.delete(orderKey);
-            return RespBean.error(RespBeanEnum.ERROR);
+        // 3. 把小票往 RabbitMQ (缓冲分发屏) 里一扔！
+        mqSender.sendSeckillMessage(message);
+
+        // 4. 返回 0 告诉前端：【排队中】
+        return RespBean.success(0);
+    }
+
+    /**
+     * V3.0 新增：客户端轮询接口
+     * 前端会每隔 1 两秒悄悄调用这个接口
+     * 返回值定义： orderId(抢购成功) ; -1 (库存不足没抢到) ; 0 (还在排队努力中)
+     */
+    @RequestMapping(value = "/result", method = RequestMethod.GET)
+    @ResponseBody
+    public RespBean getResult(User user, Long goodsId) {
+        if (user == null) {
+            return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
+
+        // 1. 先去抢购订单表里查一下，后厨机器人有没有把我的单子做出来
+        QueryWrapper<SeckillOrder> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", user.getId()).eq("goods_id", goodsId);
+        SeckillOrder seckillOrder = seckillOrderMapper.selectOne(wrapper);
+
+        if (seckillOrder != null) {
+            // 恭喜！后厨已经帮你做好了，直接返回确切的订单ID，前端拿到后跳收银台页面！
+            return RespBean.success(seckillOrder.getOrderId());
+        }
+
+        // 2. 如果没查到订单，那是还在排队，还是已经卖光了？去 Redis 看看有没有售罄标记
+        boolean isStockEmpty = redisTemplate.hasKey("isStockEmpty:" + goodsId);
+
+        if (isStockEmpty) {
+            // 惨，前台已经挂“售罄”牌子了，你没戏了
+            return RespBean.success(-1);
+        }
+
+        // 3. 没查到订单，也没卖光（还在做），那就是正在处理中，耐心等
+        return RespBean.success(0);
+    }
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        List<GoodsVo> goodsList = goodsService.findGoodsVo();
+        if (goodsList == null) {
+            return;
+        }
+
+        System.out.println("==============================================================");
+        System.out.println("======== 🚀 正在执行系统级别【缓存预热 Cache Warm-up】 ========");
+        System.out.println("==============================================================");
+
+        for (GoodsVo goods : goodsList) {
+            // 将真实库存写入 Redis
+            redisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), goods.getStockCount());
+            // 清除上次运行遗留的售罄标记
+            redisTemplate.delete("isStockEmpty:" + goods.getId());
+
+            // 打印出一条极具观赏性的日志
+            System.out.printf(" 📦 加载商品 | ID: %-2d | 名称: %-15s | 注入 Redis 秒杀库存数: %d 份 \n",
+                    goods.getId(), goods.getGoodsName(), goods.getStockCount());
+        }
+
+        System.out.println("==============================================================");
+        System.out.println("============== ✅ 缓存预热完成！高并发防线已就绪！=============");
+        System.out.println("==============================================================");
     }
 }
