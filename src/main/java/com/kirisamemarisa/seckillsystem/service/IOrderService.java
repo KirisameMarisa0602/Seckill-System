@@ -6,5 +6,5 @@ import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 
 public interface IOrderService extends IService<OrderInfo> {
-    OrderInfo seckillV05(User user, GoodsVo goods);
+    OrderInfo createSeckillOrder(User user, GoodsVo goods);
 }
