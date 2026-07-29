@@ -27,13 +27,14 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     private RedisTemplate redisTemplate;
     @Transactional
     @Override
-    public OrderInfo createSeckillOrder(User user, GoodsVo goods) {
+    public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) { // 【修改点】参数换为 userId
         int updateRows = seckillGoodsMapper.decrementStock(goods.getId());
         if (updateRows < 1) {
             return null;
         }
+
         OrderInfo orderInfo = new OrderInfo();
-        orderInfo.setUserId(user.getId());
+        orderInfo.setUserId(userId); // 【修改点】直接赋值 userId
         orderInfo.setGoodsId(goods.getId());
         orderInfo.setDeliveryAddrId(0L);
         orderInfo.setGoodsName(goods.getGoodsName());
@@ -45,13 +46,14 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         this.baseMapper.insert(orderInfo);
 
         SeckillOrder seckillOrder = new SeckillOrder();
-        seckillOrder.setUserId(user.getId());
+        seckillOrder.setUserId(userId); // 【修改点】直接赋值 userId
         seckillOrder.setOrderId(orderInfo.getId());
         seckillOrder.setGoodsId(goods.getId());
         seckillOrderMapper.insert(seckillOrder);
 
+        // 【修改点】直接拼接 userId
         redisTemplate.opsForValue().set(
-                "seckillOrderCache:" + user.getId() + ":" + goods.getId(),
+                "seckillOrderCache:" + userId + ":" + goods.getId(),
                 orderInfo.getId(),
                 1, TimeUnit.HOURS
         );
