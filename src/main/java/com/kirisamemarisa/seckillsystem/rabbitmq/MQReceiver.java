@@ -13,8 +13,8 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
-
 import java.io.IOException;
+import org.springframework.dao.DuplicateKeyException;
 
 @Service
 @Slf4j
@@ -29,13 +29,11 @@ public class MQReceiver {
     public void receive(SeckillMessage seckillMessage, Channel channel, Message message) throws IOException {
         log.info("【MQReceiver】从队列中拿到了一张订单，准备落库：{}", seckillMessage);
 
-        // 【修改点】直接获取 userId
         Long userId = seckillMessage.getUserId();
         Long goodsId = seckillMessage.getGoodsId();
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
 
         try {
-            // 【修改点】使用提取出的 userId 拼接 Redis key
             Boolean hasOrder = redisTemplate.hasKey("seckillOrderCache:" + userId + ":" + goodsId);
             if (Boolean.TRUE.equals(hasOrder)) {
                 log.warn("【幂等拦截】该订单已被处理过，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
@@ -49,14 +47,16 @@ public class MQReceiver {
                 return;
             }
 
-            // 【修改点】直接传入 userId 给核心落库业务
             orderService.createSeckillOrder(userId, goodsVo);
 
             log.info("【MQReceiver】订单真实落库成功：用户{}，商品{}", userId, goodsId);
             channel.basicAck(deliveryTag, false);
+        } catch (DuplicateKeyException e) {
+            log.warn("【幂等拦截机制触发】数据库兜底拦截到恶意重投/重复消费，完美化解！用户:{}, 商品:{}", userId, goodsId);
+            channel.basicAck(deliveryTag, false);
         } catch (Exception e) {
-            log.error("【MQReceiver】订单消费异常，触发重试或本地记录：{}", e.getMessage());
-            channel.basicNack(deliveryTag, false, true);
+            log.error("【MQReceiver】订单消费发生未知异常，抛弃或转入死信队列：{}", e.getMessage());
+            channel.basicNack(deliveryTag, false, false);
         }
     }
 }
