@@ -3,6 +3,8 @@ package com.kirisamemarisa.seckillsystem.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import com.kirisamemarisa.seckillsystem.entity.User;
+import com.kirisamemarisa.seckillsystem.redis.AccessKey;
+import com.kirisamemarisa.seckillsystem.redis.UserKey;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import jakarta.servlet.http.HttpServletRequest;
@@ -52,14 +54,15 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
             }
 
             // 4. Redis 限流核心逻辑 (固定窗口计数器算法)
-            Integer count = (Integer) redisTemplate.opsForValue().get("access-limit:" + key);
+            AccessKey accessKey = AccessKey.withExpire(second);
+            String realKey = accessKey.getPrefix() + key;
+
+            Integer count = (Integer) redisTemplate.opsForValue().get(realKey);
             if (count == null) {
-                // 第一次访问，存入 Redis，并设置过期时间
-                redisTemplate.opsForValue().set("access-limit:" + key, 1, second, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(realKey, 1, accessKey.expireSeconds(), TimeUnit.SECONDS);
             } else if (count < maxCount) {
-                // 如果没超标，次数 + 1
-                redisTemplate.opsForValue().increment("access-limit:" + key);
-            } else {
+                redisTemplate.opsForValue().increment(realKey);
+            }else {
                 // 如果超标了，拦截，直接往前端写出错误 JSON
                 render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                 return false;
@@ -91,6 +94,6 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
             token = request.getParameter("token");
         }
         if (!StringUtils.hasText(token)) return null;
-        return (User) redisTemplate.opsForValue().get("session:user:" + token);
+        return (User) redisTemplate.opsForValue().get(UserKey.token.getPrefix() + token);
     }
 }

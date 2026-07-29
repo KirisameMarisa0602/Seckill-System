@@ -2,10 +2,10 @@ package com.kirisamemarisa.seckillsystem.controller;
 
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
+import com.kirisamemarisa.seckillsystem.redis.SeckillKey; // 【新增导入】
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
-import com.kirisamemarisa.seckillsystem.utils.MD5Util;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 @RestController
 @RequestMapping("/seckill")
 public class SeckillController{
+
     @Autowired
     private RedisTemplate redisTemplate;
     @Autowired
@@ -42,11 +43,16 @@ public class SeckillController{
         if (user == null) {
             return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
-        String pathKey = "seckill:path:" + user.getId() + ":" + goodsId;
+
+        // 【修改点】使用 SeckillKey.getSeckillPath 取代硬编码
+        String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         String realPath = (String) redisTemplate.opsForValue().get(pathKey);
+
         if (!path.equals(realPath)) {
             return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
         }
+
+        // (注：seckillGoods 和 isStockEmpty 属于库存预热相关，未来如果有强迫症也可以加进 SeckillKey 里，现阶段保持原样不影响)
         Long result = (Long) redisTemplate.execute(
                 seckillScript,
                 Arrays.asList(
@@ -91,9 +97,14 @@ public class SeckillController{
         response.setHeader("Pragma", "No-cache");
         response.setHeader("Cache-Control", "no-cache");
         response.setDateHeader("Expires", 0);
+
         ArithmeticCaptcha captcha = new ArithmeticCaptcha(130, 32);
         String text = captcha.text();
-        redisTemplate.opsForValue().set("seckill:captcha:" + user.getId() + ":" + goodsId, text, 60, TimeUnit.SECONDS);
+
+        // 【修改点】使用 SeckillKey.getSeckillCaptcha 取代硬编码时间与前缀
+        String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
+        redisTemplate.opsForValue().set(captchaKey, text, SeckillKey.getSeckillCaptcha.expireSeconds(), TimeUnit.SECONDS);
+
         try {
             captcha.out(response.getOutputStream());
         } catch (Exception e) {
@@ -111,15 +122,25 @@ public class SeckillController{
         if (!StringUtils.hasText(captcha)) {
             return RespBean.error(RespBeanEnum.CAPTCHA_ERROR);
         }
-        String captchaKey = "seckill:captcha:" + user.getId() + ":" + goodsId;
+
+        // 【修改点】使用 SeckillKey.getSeckillCaptcha
+        String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
         String realCaptcha = (String) redisTemplate.opsForValue().get(captchaKey);
 
         if (!captcha.equals(realCaptcha)) {
             return RespBean.error(RespBeanEnum.CAPTCHA_ERROR);
         }
+
+        // 验证完成记得删除
         redisTemplate.delete(captchaKey);
+
+        // 生成秒杀路径
         String str = UUID.randomUUID().toString().replace("-", "");
-        redisTemplate.opsForValue().set("seckill:path:" + user.getId() + ":" + goodsId, str, 60, TimeUnit.SECONDS);
+
+        // 【修改点】使用 SeckillKey.getSeckillPath
+        String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
+        redisTemplate.opsForValue().set(pathKey, str, SeckillKey.getSeckillPath.expireSeconds(), TimeUnit.SECONDS);
+
         return RespBean.success(str);
     }
 }

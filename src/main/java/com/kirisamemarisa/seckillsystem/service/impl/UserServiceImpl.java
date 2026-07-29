@@ -3,6 +3,7 @@ package com.kirisamemarisa.seckillsystem.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.mapper.UserMapper;
+import com.kirisamemarisa.seckillsystem.redis.UserKey;
 import com.kirisamemarisa.seckillsystem.service.IUserService;
 import com.kirisamemarisa.seckillsystem.utils.MD5Util;
 import com.kirisamemarisa.seckillsystem.vo.LoginVo;
@@ -45,7 +46,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         // 4. 将用户信息序列化进 Redis 中（以此替代传统的 Tomcat Session），有效期设为30天
         // Key长这样： session:user:fa2c1...
-        redisTemplate.opsForValue().set("session:user:" + token, user, 30, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(UserKey.token.getPrefix() + token, user, UserKey.token.expireSeconds(), TimeUnit.SECONDS);
 
         // 5. 登录成功，把 Token 返回给前端，前端后续请求都要带上这个 Token
         return RespBean.success(token);
