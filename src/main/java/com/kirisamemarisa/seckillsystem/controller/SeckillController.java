@@ -6,6 +6,7 @@ import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import com.kirisamemarisa.seckillsystem.utils.MD5Util;
+import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -100,6 +101,7 @@ public class SeckillController{
         }
     }
 
+    @AccessLimit(second = 5, maxCount = 5, needLogin = true)
     @GetMapping(value = "/path")
     @ResponseBody
     public RespBean getSeckillPath(User user, Long goodsId, String captcha) {
