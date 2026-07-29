@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import java.util.List;
 
 /**
@@ -15,10 +15,16 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Autowired
     private UserArgumentResolver userArgumentResolver;
+    @Autowired
+    private AccessLimitInterceptor accessLimitInterceptor; // 注入限流拦截器
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-        // 将我们自己写的参数解析器加到 Spring 的管控里
         resolvers.add(userArgumentResolver);
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) { // 注册拦截器
+        registry.addInterceptor(accessLimitInterceptor);
     }
 }

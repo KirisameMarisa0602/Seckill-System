@@ -32,20 +32,7 @@ public class UserArgumentResolver implements HandlerMethodArgumentResolver {
     @Override
     public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
                                   NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
-        HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
-
-        // 优先从 Header 取，如果没有再试着从 URL 参数里取（兼容性写法）
-        String token = request.getHeader("token");
-        if (!StringUtils.hasText(token)) {
-            token = request.getParameter("token");
-        }
-
-        // 如果用户根本没传 token，直接返回 null，交给 Controller 自己去报“用户未登录”
-        if (!StringUtils.hasText(token)) {
-            return null;
-        }
-
-        // 根据 token 去 Redis 里拿真正的 User 对象（这就是我们刚才存进去的！）
-        return redisTemplate.opsForValue().get("session:user:" + token);
+        // 拦截器已经做过解析了，直接从当前线程拿即可
+        return UserContext.getUser();
     }
 }
