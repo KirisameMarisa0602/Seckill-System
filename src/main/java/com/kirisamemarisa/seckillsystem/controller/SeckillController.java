@@ -2,7 +2,7 @@ package com.kirisamemarisa.seckillsystem.controller;
 
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
-import com.kirisamemarisa.seckillsystem.redis.SeckillKey; // 【新增导入】
+import com.kirisamemarisa.seckillsystem.redis.SeckillKey;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
@@ -20,6 +20,8 @@ import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
@@ -37,6 +39,8 @@ public class SeckillController{
     @Autowired
     private DefaultRedisScript<Long> seckillScript;
 
+    private final Map<Long, Boolean> emptyStockMap = new ConcurrentHashMap<>();
+
     @RequestMapping(value = "/{path}/doSeckill", method = RequestMethod.POST)
     @ResponseBody
     public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) {
@@ -44,7 +48,11 @@ public class SeckillController{
             return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
 
-        // 【修改点】使用 SeckillKey.getSeckillPath 取代硬编码
+        Boolean over = emptyStockMap.get(goodsId);
+        if (over != null && over) {
+            return RespBean.error(RespBeanEnum.EMPTY_STOCK);
+        }
+
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         String realPath = (String) redisTemplate.opsForValue().get(pathKey);
 
@@ -52,7 +60,6 @@ public class SeckillController{
             return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
         }
 
-        // (注：seckillGoods 和 isStockEmpty 属于库存预热相关，未来如果有强迫症也可以加进 SeckillKey 里，现阶段保持原样不影响)
         Long result = (Long) redisTemplate.execute(
                 seckillScript,
                 Arrays.asList(
@@ -61,7 +68,9 @@ public class SeckillController{
                         "isStockEmpty:" + goodsId
                 )
         );
+
         if (result == null || result == 0L) {
+            emptyStockMap.put(goodsId, true);
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
@@ -101,7 +110,6 @@ public class SeckillController{
         ArithmeticCaptcha captcha = new ArithmeticCaptcha(130, 32);
         String text = captcha.text();
 
-        // 【修改点】使用 SeckillKey.getSeckillCaptcha 取代硬编码时间与前缀
         String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
         redisTemplate.opsForValue().set(captchaKey, text, SeckillKey.getSeckillCaptcha.expireSeconds(), TimeUnit.SECONDS);
 
@@ -123,7 +131,6 @@ public class SeckillController{
             return RespBean.error(RespBeanEnum.CAPTCHA_ERROR);
         }
 
-        // 【修改点】使用 SeckillKey.getSeckillCaptcha
         String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
         String realCaptcha = (String) redisTemplate.opsForValue().get(captchaKey);
 
@@ -131,13 +138,10 @@ public class SeckillController{
             return RespBean.error(RespBeanEnum.CAPTCHA_ERROR);
         }
 
-        // 验证完成记得删除
         redisTemplate.delete(captchaKey);
 
-        // 生成秒杀路径
         String str = UUID.randomUUID().toString().replace("-", "");
 
-        // 【修改点】使用 SeckillKey.getSeckillPath
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         redisTemplate.opsForValue().set(pathKey, str, SeckillKey.getSeckillPath.expireSeconds(), TimeUnit.SECONDS);
 
