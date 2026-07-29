@@ -1,9 +1,9 @@
 package com.kirisamemarisa.seckillsystem.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
 import com.kirisamemarisa.seckillsystem.entity.SeckillOrder;
-import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.mapper.OrderInfoMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillOrderMapper;
@@ -82,5 +82,37 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
 
         return orderInfo;
+    }
+
+    /**
+     * 【核心兜底逻辑】：超时关单，释放全部资源
+     */
+    @Transactional
+    @Override
+    public void cancelTimeoutOrder(Long orderId) {
+        OrderInfo orderInfo = this.getById(orderId);
+        // 1. 幂等与状态校验：如果订单不存在，或者状态不等于 0 (未支付)，说明用户已经支付或单据已做处理，不用关单
+        if (orderInfo == null || orderInfo.getStatus() != 0) {
+            return;
+        }
+
+        // 2. 修改普通订单状态为 -1 (已取消)
+        orderInfo.setStatus(-1);
+        this.updateById(orderInfo);
+
+        // 3. 移除秒杀订单凭证，让该用户有再抢一次的机会
+        seckillOrderMapper.delete(
+                new QueryWrapper<SeckillOrder>().eq("order_id", orderId)
+        );
+
+        // 4. 回补 MySQL 中的秒杀商品库存
+        seckillGoodsMapper.incrementStock(orderInfo.getGoodsId());
+
+        // 5. 回补 Redis 中的库存，并清理该用户抢到过商品的限购缓存标记
+        redisTemplate.opsForValue().increment("seckillGoods:" + orderInfo.getGoodsId());
+        redisTemplate.delete("seckillOrderCache:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
+        redisTemplate.delete("isStockEmpty:" + orderInfo.getGoodsId());
+
+        System.out.println("====== [超时守护动作触发] 订单ID: " + orderId + " 未在1分钟内支付，系统已关单并成功回补所有库存与购买限额！======");
     }
 }
