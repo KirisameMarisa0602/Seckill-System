@@ -7,6 +7,8 @@ import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
+import org.redisson.api.RBloomFilter;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -38,6 +40,8 @@ public class SeckillController{
     private MQSender mqSender;
     @Autowired
     private DefaultRedisScript<Long> seckillScript;
+    @Autowired
+    private RedissonClient redissonClient;
 
     private final Map<Long, Boolean> emptyStockMap = new ConcurrentHashMap<>();
 
@@ -47,7 +51,11 @@ public class SeckillController{
         if (user == null) {
             return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
-
+        RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        if (!bloomFilter.contains(goodsId)) {
+            log.warn("检测到恶意穿透请求，非法的商品ID: {}", goodsId);
+            return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL); // 抛出请求非法异常
+        }
         Boolean over = emptyStockMap.get(goodsId);
         if (over != null && over) {
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);

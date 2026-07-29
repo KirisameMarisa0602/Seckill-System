@@ -3,6 +3,8 @@ package com.kirisamemarisa.seckillsystem.controller;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
+import org.redisson.api.RBloomFilter;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,17 +21,22 @@ public class AdminController {
     private IGoodsService goodsService;
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+    @Autowired
+    private RedissonClient redissonClient;
     @RequestMapping(value = "/warmup", method = RequestMethod.POST)
     @ResponseBody
     public RespBean cacheWarmUp() {
         List<GoodsVo> goodsList = goodsService.findGoodsVo();
+        RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        bloomFilter.tryInit(10000L, 0.01);
         if (goodsList == null || goodsList.isEmpty()) {
-            return RespBean.error(null); // 可自定义个枚举："暂无秒杀商品"
+            return RespBean.error(null);
         }
         System.out.println("==============================================================");
         System.out.println("======== 【运营后台触发：秒杀商品缓存预热 / 库存重置】 ========");
         System.out.println("==============================================================");
         for (GoodsVo goods : goodsList) {
+            bloomFilter.add(goods.getId());
             redisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), goods.getStockCount());
             if (goods.getStockCount() > 0) {
                 redisTemplate.delete("isStockEmpty:" + goods.getId());
