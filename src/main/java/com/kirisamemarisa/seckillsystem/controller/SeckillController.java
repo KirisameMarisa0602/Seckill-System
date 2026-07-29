@@ -12,22 +12,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.beans.factory.InitializingBean;
-import com.kirisamemarisa.seckillsystem.service.IGoodsService;
-import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
-
 import java.util.Arrays;
-import java.util.List;
 
 @RestController
 @RequestMapping("/seckill")
-public class SeckillController implements InitializingBean {
+public class SeckillController{
     @Autowired
     private RedisTemplate redisTemplate;
     @Autowired
     private MQSender mqSender;
-    @Autowired
-    private IGoodsService goodsService;
     @Autowired
     private DefaultRedisScript<Long> seckillScript;
 
@@ -50,7 +43,7 @@ public class SeckillController implements InitializingBean {
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
         }
-        SeckillMessage message = new SeckillMessage(user, goodsId);
+        SeckillMessage message = new SeckillMessage(user.getId(), goodsId);
         mqSender.sendSeckillMessage(message);
         return RespBean.success(0);
     }
@@ -70,29 +63,5 @@ public class SeckillController implements InitializingBean {
             return RespBean.success(-1);
         }
         return RespBean.success(0);
-    }
-
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        List<GoodsVo> goodsList = goodsService.findGoodsVo();
-        if (goodsList == null) {
-            return;
-        }
-        System.out.println("==============================================================");
-        System.out.println("======== 【缓存预热 Cache Warm-up】 ========");
-        System.out.println("==============================================================");
-        for (GoodsVo goods : goodsList) {
-            redisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), goods.getStockCount());
-            if (goods.getStockCount() > 0) {
-                redisTemplate.delete("isStockEmpty:" + goods.getId());
-            } else {
-                redisTemplate.opsForValue().set("isStockEmpty:" + goods.getId(), "0");
-            }
-            System.out.printf(" 加载商品 | ID: %-2d | 名称: %-15s | 注入 Redis 秒杀库存数: %d 份 \n",
-                    goods.getId(), goods.getGoodsName(), goods.getStockCount());
-        }
-        System.out.println("==============================================================");
-        System.out.println("============== 缓存预热完成！=============");
-        System.out.println("==============================================================");
     }
 }
