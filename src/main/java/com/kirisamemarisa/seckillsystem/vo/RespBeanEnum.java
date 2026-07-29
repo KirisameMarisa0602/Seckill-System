@@ -19,7 +19,10 @@ public enum RespBeanEnum {
     // ====== 秒杀模块错误码 ======
     EMPTY_STOCK(500200, "抱歉，库存不足！"),
     REPEAT_ERROR(500201, "该商品每人限购一件，请勿重复抢购！"),
-    USER_NOT_EXIST(500202, "用户不存在或未登录");
+    USER_NOT_EXIST(500202, "用户不存在或未登录"),
+    // 👇👇新增下面这两个安全校验错误码👇👇
+    REQUEST_ILLEGAL(500203, "请求非法或频繁，请重试"),
+    CAPTCHA_ERROR(500204, "验证码错误，请重新输入");
 
     private final Integer code;
     private final String message;
