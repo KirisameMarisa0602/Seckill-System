@@ -28,4 +28,11 @@ public class RedisConfig {
         redisScript.setResultType(Long.class);
         return redisScript;
     }
+    @Bean
+    public DefaultRedisScript<Long> rateLimitScript() {
+        DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
+        redisScript.setLocation(new ClassPathResource("scripts/rate-limit.lua"));
+        redisScript.setResultType(Long.class);
+        return redisScript;
+    }
 }

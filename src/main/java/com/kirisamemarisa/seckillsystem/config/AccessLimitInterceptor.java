@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import java.util.Collections;
 
 import java.io.PrintWriter;
 import java.util.concurrent.TimeUnit;
@@ -25,25 +27,22 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    @Autowired
+    private DefaultRedisScript<Long> rateLimitScript;
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (handler instanceof HandlerMethod) {
-            // 1. 获取登录用户并存入 ThreadLocal
             User user = getUser(request);
             UserContext.setUser(user);
-
             HandlerMethod hm = (HandlerMethod) handler;
-            // 2. 尝试获取该方法上的 @AccessLimit 注解
             AccessLimit accessLimit = hm.getMethodAnnotation(AccessLimit.class);
             if (accessLimit == null) {
-                return true; // 没加注解的方法直接放行
+                return true;
             }
-
             int second = accessLimit.second();
             int maxCount = accessLimit.maxCount();
             boolean needLogin = accessLimit.needLogin();
-
-            // 3. 校验登录状态
             String key = request.getRequestURI();
             if (needLogin) {
                 if (user == null) {
@@ -53,17 +52,17 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 key += ":" + user.getId();
             }
 
-            // 4. Redis 限流核心逻辑 (固定窗口计数器算法)
             AccessKey accessKey = AccessKey.withExpire(second);
             String realKey = accessKey.getPrefix() + key;
 
-            Integer count = (Integer) redisTemplate.opsForValue().get(realKey);
-            if (count == null) {
-                redisTemplate.opsForValue().set(realKey, 1, accessKey.expireSeconds(), TimeUnit.SECONDS);
-            } else if (count < maxCount) {
-                redisTemplate.opsForValue().increment(realKey);
-            }else {
-                // 如果超标了，拦截，直接往前端写出错误 JSON
+            Long result = (Long) redisTemplate.execute(
+                    rateLimitScript,
+                    Collections.singletonList(realKey), // KEYS[1]
+                    maxCount,                           // ARGV[1]
+                    second                              // ARGV[2]
+            );
+
+            if (result != null && result == 0L) {
                 render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                 return false;
             }
@@ -71,13 +70,10 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    // 线程结束后清除，防止内存泄漏
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserContext.remove();
     }
-
-    // ========== 私有辅助方法 ==========
 
     private void render(HttpServletResponse response, RespBeanEnum respBeanEnum) throws Exception {
         response.setContentType("application/json;charset=UTF-8");
