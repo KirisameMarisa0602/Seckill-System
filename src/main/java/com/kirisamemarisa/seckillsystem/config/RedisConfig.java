@@ -7,6 +7,8 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.listener.PatternTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 @Configuration
 public class RedisConfig {
@@ -27,5 +29,20 @@ public class RedisConfig {
         redisScript.setLocation(new ClassPathResource("scripts/seckill-stock.lua"));
         redisScript.setResultType(Long.class);
         return redisScript;
+    }
+    @Bean
+    public DefaultRedisScript<Long> rateLimitScript() {
+        DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
+        redisScript.setLocation(new ClassPathResource("scripts/rate-limit.lua"));
+        redisScript.setResultType(Long.class);
+        return redisScript;
+    }
+    @Bean
+    public RedisMessageListenerContainer container(org.springframework.data.redis.connection.RedisConnectionFactory connectionFactory, StockRestoreListener listener) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        // 给监听器配上波段，只监听名字叫 `stock_replenish_channel` 的广播频道
+        container.addMessageListener(listener, new PatternTopic("stock_replenish_channel"));
+        return container;
     }
 }

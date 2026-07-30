@@ -31,4 +31,8 @@ public class MQSender {
         log.info("【收银员操作】接收到秒杀请求，正在投递消息至 MQ: {}", message);
         rabbitTemplate.convertAndSend(RabbitMQConfig.SECKILL_EXCHANGE, RabbitMQConfig.ROUTING_KEY, message);
     }
+    public void sendDelayOrderMessage(Long orderId) {
+        log.info("【系统指令】订单[ID:{}]已生成，已投入延迟队列开启 1 分钟倒计时！", orderId);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_EXCHANGE, RabbitMQConfig.DELAY_ROUTING_KEY, orderId);
+    }
 }
