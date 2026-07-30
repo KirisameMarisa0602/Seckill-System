@@ -113,6 +113,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         redisTemplate.delete("seckillOrderCache:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
         redisTemplate.delete("seckillUserOrder:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
         redisTemplate.delete("isStockEmpty:" + orderInfo.getGoodsId());
+        redisTemplate.convertAndSend("stock_replenish_channel", orderInfo.getGoodsId().toString());
 
         System.out.println("====== [超时守护动作触发] 订单ID: " + orderId + " 未在1分钟内支付，系统已关单并成功回补所有库存与购买限额！======");
     }

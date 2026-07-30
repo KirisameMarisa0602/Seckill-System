@@ -155,4 +155,8 @@ public class SeckillController{
 
         return RespBean.success(str);
     }
+    public void clearEmptyStock(Long goodsId) {
+        emptyStockMap.remove(goodsId);
+        log.info("【本地缓存防线同步】成功清空商品 {} 的本地售罄标记，该商品起死回生！", goodsId);
+    }
 }
