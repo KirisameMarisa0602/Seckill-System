@@ -19,7 +19,8 @@ public enum RespBeanEnum {
     USER_NOT_EXIST(500202, "用户不存在或未登录"),
     REQUEST_ILLEGAL(500203, "请求非法或频繁，请重试"),
     CAPTCHA_ERROR(500204, "验证码错误，请重新输入"),
-    ACCESS_LIMIT_REACHED(500205, "访问过于频繁，请稍后再试");
+    ACCESS_LIMIT_REACHED(500205, "访问过于频繁，请稍后再试"),
+    MOBILE_HAS_REGISTERED(500206, "手机号已注册，请直接登录");
     //因为是规定的状态码枚举，final，不需更改，所以只需要@Getter注解
     private final Integer code;
     private final String message;

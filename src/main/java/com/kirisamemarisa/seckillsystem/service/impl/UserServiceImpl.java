@@ -7,6 +7,7 @@ import com.kirisamemarisa.seckillsystem.redis.UserKey;
 import com.kirisamemarisa.seckillsystem.service.IUserService;
 import com.kirisamemarisa.seckillsystem.utils.MD5Util;
 import com.kirisamemarisa.seckillsystem.vo.LoginVo;
+import com.kirisamemarisa.seckillsystem.vo.RegisterVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,5 +52,38 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         //存进redis
         redisTemplate.opsForValue().set(UserKey.token.getPrefix() + token, user, UserKey.token.expireSeconds(), TimeUnit.SECONDS);
         return RespBean.success(token);
+    }
+
+    @Override
+    public RespBean doRegister(RegisterVo registerVo) {
+        String mobile = registerVo.getMobile();
+
+        // 1. 检查是否存在（应对高并发情况的话最好在此加分布式锁，或利用数据库主键防重）
+        User existUser = userMapper.selectById(Long.valueOf(mobile));
+        if (existUser != null) {
+            return RespBean.error(RespBeanEnum.MOBILE_HAS_REGISTERED);
+        }
+
+        // 2. 初始化用户对象
+        User user = new User();
+        // ID策略为IdType.INPUT，手动将手机号赋值为主键ID
+        user.setId(Long.valueOf(mobile));
+        user.setNickname(registerVo.getNickname());
+
+        // 3. 生成专属动态盐(采用 UUID 前 6 位作为盐)
+        String salt = UUID.randomUUID().toString().replace("-", "").substring(0, 6);
+        user.setSalt(salt);
+
+        // 4. 将前端传来的第一次加密后的 formPass 配上刚刚生成的随机盐进行最终 DBPass 的生成
+        String dbPass = MD5Util.formPassToDBPass(registerVo.getPassword(), salt);
+        user.setPassword(dbPass);
+
+        // 给个默认头像和注册时间
+        user.setHead("https://example.com/default-avatar.png");
+        user.setRegisterDate(new java.util.Date());
+
+        // 5. 入库
+        userMapper.insert(user);
+        return RespBean.success("注册成功");
     }
 }
