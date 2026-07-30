@@ -10,24 +10,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 用户前台控制中心 (登录、注册)
- */
 @RestController
 @RequestMapping("/user")
 public class UserController {
-
     @Autowired
     private IUserService userService;
 
-    /**
-     * 接收登录请求
-     * @Valid 注解会自动触发 LoginVo 里设置的 @NotNull, @Pattern 等校验
-     * 如果参数不合格，不进入方法体，直接抛错
-     */
     @RequestMapping(value = "/login", method = RequestMethod.POST)
+    //看到参数前有@Valid注解，先把JSON映射为LoginVo对象检查参数，通过后再进入login方法，不通过直接在spring框架层面抛出异常
     public RespBean login(@Valid @RequestBody LoginVo loginVo) {
-        // 交给 Service 验证账号密码并发放 Token
         return userService.doLogin(loginVo);
     }
 }

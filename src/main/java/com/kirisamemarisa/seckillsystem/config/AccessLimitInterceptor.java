@@ -17,51 +17,83 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import java.util.Collections;
-
 import java.io.PrintWriter;
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class AccessLimitInterceptor implements HandlerInterceptor {
-
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
-
     @Autowired
     private DefaultRedisScript<Long> rateLimitScript;
 
+    //获取用户的方法
+    private User getUser(HttpServletRequest request) {
+        //去请求头里找user的登录token
+        String token = request.getHeader("token");
+        //请求头里没有的话去请求参数里找
+        if (!StringUtils.hasText(token)) {
+            token = request.getParameter("token");
+        }
+        //没有token就默认用户没登陆
+        if (!StringUtils.hasText(token)) return null;
+        //拿着token去redis里找
+        return (User) redisTemplate.opsForValue().get(UserKey.token.getPrefix() + token);
+    }
+
     @Override
+    //这三个参数代表了一次 HTTP 请求的三个核心要素：
+    //HttpServletRequest request：来的人是谁（请求的参数、路径、请求头）。
+    //HttpServletResponse response：我们要怎么回话（负责给前端发数据、发报错）。
+    //Object handler：他要去哪儿 / 他要干嘛（请求的最终目的地）。
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        //可以把HandlerMethod 想象成一张“目标方法的详细档案卡”。这张卡片里记录了：
+        //Method：将要执行的具体是哪个方法？
+        //Bean：这个方法属于哪个 Controller 类？
+        //Annotations：这个方法头上贴了什么注解？（比如有没有我们刚才说的 @AccessLimit 标签？）
+
+        //如果是一个controller方法
         if (handler instanceof HandlerMethod) {
+            //查是哪个用户
             User user = getUser(request);
+            //服务用户的线程在自己的ThreadLocalMap里存下“ThreadLocal：User”，反向存储实现隔离
             UserContext.setUser(user);
+            //强制类型转换
             HandlerMethod hm = (HandlerMethod) handler;
+
+            //去看一眼目标Controller方法上，有没有贴@AccessLimit标签
             AccessLimit accessLimit = hm.getMethodAnnotation(AccessLimit.class);
+            //没有这个标签的直接放行，没必要走下面的步骤
             if (accessLimit == null) {
                 return true;
             }
+            //否则获取限流要求
             int second = accessLimit.second();
             int maxCount = accessLimit.maxCount();
             boolean needLogin = accessLimit.needLogin();
+
             String key = request.getRequestURI();
             if (needLogin) {
+                //如果需要登录，但是你没有登陆的token，那不予放行
                 if (user == null) {
                     render(response, RespBeanEnum.USER_NOT_EXIST);
                     return false;
                 }
                 key += ":" + user.getId();
             }
-
+            //生成redis中的键值对
             AccessKey accessKey = AccessKey.withExpire(second);
             String realKey = accessKey.getPrefix() + key;
 
+            //执行Lua脚本把“查次数 -> 如果小于5 -> 存进Redis加1”合并为原子操作
             Long result = (Long) redisTemplate.execute(
-                    rateLimitScript,
-                    Collections.singletonList(realKey), // KEYS[1]
-                    maxCount,                           // ARGV[1]
-                    second                              // ARGV[2]
+                    rateLimitScript,                      // 跑哪个Lua脚本
+                    Collections.singletonList(realKey),   // 告诉脚本该查哪个Key（刚才拼出来的）
+                    maxCount,                             // 告诉脚本限制次数是多少
+                    second                                // 告诉脚本过期时间是多少
             );
 
+            //检查是否访问过于频繁
             if (result != null && result == 0L) {
                 render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                 return false;
@@ -70,11 +102,15 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    //Tomcat里的线程是循环利用的
+    //ThreadLocal需要及时清空（执行 remove()）
+    //如果不清空，下一次一个没登录的请求恰好分到了这个线程，获取到上个客人的 User 对象，直接就“越权”登录了
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserContext.remove();
     }
 
+    //需要在Controller执行之前提前毙掉一个请求，且需要给前端返回友好的 JSON 报错提示，都要完成这部分代码
     private void render(HttpServletResponse response, RespBeanEnum respBeanEnum) throws Exception {
         response.setContentType("application/json;charset=UTF-8");
         PrintWriter out = response.getWriter();
@@ -82,14 +118,5 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
         out.write(new ObjectMapper().writeValueAsString(respBean));
         out.flush();
         out.close();
-    }
-
-    private User getUser(HttpServletRequest request) {
-        String token = request.getHeader("token");
-        if (!StringUtils.hasText(token)) {
-            token = request.getParameter("token");
-        }
-        if (!StringUtils.hasText(token)) return null;
-        return (User) redisTemplate.opsForValue().get(UserKey.token.getPrefix() + token);
     }
 }

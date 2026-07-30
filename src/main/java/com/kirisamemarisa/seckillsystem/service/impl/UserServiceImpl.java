@@ -12,13 +12,14 @@ import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
-
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+//控制反转
 @Service
+//extends ServiceImpl<UserMapper, User>表示要操作的数据库表映射类是 UserMapper，里面的数据装在 User 这个实体类，通过Mybatis-Plus实现ORM
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
-
+    //依赖注入
     @Autowired
     private UserMapper userMapper;
     @Autowired
@@ -27,28 +28,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     @Override
     public RespBean doLogin(LoginVo loginVo) {
         String mobile = loginVo.getMobile();
+        //双重MD5加密1：（前端用户明文密码+静态盐）进行第一次MD5加密得到pass
         String pass = loginVo.getPassword();
-
-        // 1. 根据手机号从数据库获取用户
         User user = userMapper.selectById(Long.valueOf(mobile));
+
+        //如果没这个用户
         if (user == null) {
             return RespBean.error(RespBeanEnum.LOGIN_ERROR);
         }
 
-        // 2. MD5 密码双重校验（前端发来的是一次加密密码，我们将它与数据库的随机盐结合判断）
+        //双重MD5加密2：（pass+用户专属动态盐）进行第二次MD5加密得到落实到MySQL数据库里的用户密码
         String calcPass = MD5Util.formPassToDBPass(pass, user.getSalt());
+
+        //如果密码不对
         if (!calcPass.equals(user.getPassword())) {
             return RespBean.error(RespBeanEnum.LOGIN_ERROR);
         }
 
-        // 3. 密码正确，签发唯一 Token 作会话凭证
-        String token = UUID.randomUUID().toString().replace("-", ""); // 去掉中划线
+        //密码正确颁发标识用户登陆状态的token
+        String token = UUID.randomUUID().toString().replace("-", "");
 
-        // 4. 将用户信息序列化进 Redis 中（以此替代传统的 Tomcat Session），有效期设为30天
-        // Key长这样： session:user:fa2c1...
+        //存进redis
         redisTemplate.opsForValue().set(UserKey.token.getPrefix() + token, user, UserKey.token.expireSeconds(), TimeUnit.SECONDS);
-
-        // 5. 登录成功，把 Token 返回给前端，前端后续请求都要带上这个 Token
         return RespBean.success(token);
     }
 }

@@ -8,17 +8,14 @@
         <version>3.2.6</version>
         <relativePath/>
     </parent>
-
     <groupId>com.kirisamemarisa</groupId>
     <artifactId>Seckill-System</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Seckill-System</name>
     <description>Seckill-System</description>
-
     <properties>
         <java.version>21</java.version>
     </properties>
-
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -91,7 +88,6 @@
             <version>3.27.0</version>
         </dependency>
     </dependencies>
-
     <build>
         <plugins>
             <plugin>
