@@ -7,6 +7,8 @@ import com.kirisamemarisa.seckillsystem.vo.RegisterVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 
 public interface IUserService extends IService<User> {
+    //用户登录
     RespBean doLogin(LoginVo loginVo);
+    //用户注册
     RespBean doRegister(RegisterVo registerVo);
 }

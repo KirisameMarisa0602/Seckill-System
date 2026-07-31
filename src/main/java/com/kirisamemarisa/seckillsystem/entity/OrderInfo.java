@@ -20,8 +20,8 @@ public class OrderInfo implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.ASSIGN_ID)
-
     private Long id;
+
     private Long userId;
     private Long goodsId;
     private Long deliveryAddrId;

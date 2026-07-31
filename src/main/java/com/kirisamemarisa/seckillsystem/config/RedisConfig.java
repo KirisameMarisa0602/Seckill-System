@@ -23,6 +23,7 @@ public class RedisConfig {
         template.afterPropertiesSet();
         return template;
     }
+
     @Bean
     public DefaultRedisScript<Long> seckillScript() {
         DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
@@ -30,6 +31,7 @@ public class RedisConfig {
         redisScript.setResultType(Long.class);
         return redisScript;
     }
+
     @Bean
     public DefaultRedisScript<Long> rateLimitScript() {
         DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
@@ -37,11 +39,11 @@ public class RedisConfig {
         redisScript.setResultType(Long.class);
         return redisScript;
     }
+
     @Bean
     public RedisMessageListenerContainer container(org.springframework.data.redis.connection.RedisConnectionFactory connectionFactory, StockRestoreListener listener) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // 给监听器配上波段，只监听名字叫 `stock_replenish_channel` 的广播频道
         container.addMessageListener(listener, new PatternTopic("stock_replenish_channel"));
         return container;
     }

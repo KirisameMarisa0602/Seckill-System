@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 public class AccessLimitInterceptor implements HandlerInterceptor {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
     @Autowired
     private DefaultRedisScript<Long> rateLimitScript;
 

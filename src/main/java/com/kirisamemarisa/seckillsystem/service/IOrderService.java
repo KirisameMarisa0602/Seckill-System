@@ -5,11 +5,8 @@ import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 
 public interface IOrderService extends IService<OrderInfo> {
-
+    //创建秒杀订单
     OrderInfo createSeckillOrder(Long userId, GoodsVo goods);
-
-    /**
-     * 处理超时未支付的订单（恢复库存、解除限购、关闭订单）
-     */
+    //取消超时订单
     void cancelTimeoutOrder(Long orderId);
 }
