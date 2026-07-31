@@ -23,6 +23,9 @@ public class RabbitMQConfig {
     public static final String ERROR_DEAD_LETTER_QUEUE = "seckill.error.dlq.queue";
     public static final String ERROR_DEAD_LETTER_EXCHANGE = "seckill.error.dlx.exchange";
     public static final String ERROR_DEAD_LETTER_ROUTING_KEY = "seckill.error.dlx.routing.key";
+    public static final String COMPENSATE_QUEUE = "seckill.compensate.queue";
+    public static final String COMPENSATE_EXCHANGE = "seckill.compensate.exchange";
+    public static final String COMPENSATE_ROUTING_KEY = "seckill.compensate.routing.key";
 
     @Bean
     public Queue seckillQueue() {
@@ -81,4 +84,19 @@ public class RabbitMQConfig {
 
     @Bean
     public MessageConverter messageConverter() { return new Jackson2JsonMessageConverter(); }
+
+    @Bean
+    public DirectExchange compensateExchange() {
+        return new DirectExchange(COMPENSATE_EXCHANGE);
+    }
+
+    @Bean
+    public Queue compensateQueue() {
+        return new Queue(COMPENSATE_QUEUE, true);
+    }
+
+    @Bean
+    public Binding compensateBinding() {
+        return BindingBuilder.bind(compensateQueue()).to(compensateExchange()).with(COMPENSATE_ROUTING_KEY);
+    }
 }

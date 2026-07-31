@@ -10,6 +10,7 @@ import com.kirisamemarisa.seckillsystem.mapper.GoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.OrderInfoMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillOrderMapper;
+import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
 import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Autowired private TransactionTemplate transactionTemplate;
 
     @Autowired private GoodsMapper goodsMapper;
+
+    @Autowired private MQSender mqSender;
 
     @Override
     public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) {
@@ -113,7 +116,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 log.info("【资产流转】订单 {} 核爆完成，主商铺库存落地剥离", orderId);
             }
         } catch (Exception e) {
-            log.error("【盘点报警】订单 {} 支付非常美满，但核减主库存挂了。待日结系统恢复数据", orderId, e);
+            log.error("【盘点报警】订单 {} 支付成功，但核减主库存挂了。", orderId, e);
+            mqSender.sendCompensateMessage(orderId);
         }
         return true;
     }

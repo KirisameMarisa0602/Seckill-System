@@ -32,7 +32,11 @@ public class MQSender {
         rabbitTemplate.convertAndSend(RabbitMQConfig.SECKILL_EXCHANGE, RabbitMQConfig.SEND_ROUTING_KEY, message);
     }
     public void sendDelayOrderMessage(Long orderId) {
-        log.info("【系统指令】订单[ID:{}]已生成，已投入延迟队列开启 1 分钟倒计时！", orderId);
+        log.info("【系统指令】订单[ID:{}]已生成，已投入延迟队列开启15分钟倒计时！", orderId);
         rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_EXCHANGE, RabbitMQConfig.DELAY_ROUTING_KEY, orderId);
+    }
+    public void sendCompensateMessage(Long orderId) {
+        log.info("【容错补偿】订单[ID:{}]扣减主库失败，已推入MQ重试补偿队列等待处理！", orderId);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.COMPENSATE_EXCHANGE, RabbitMQConfig.COMPENSATE_ROUTING_KEY, orderId);
     }
 }
