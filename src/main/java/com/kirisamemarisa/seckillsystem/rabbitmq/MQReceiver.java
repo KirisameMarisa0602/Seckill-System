@@ -12,6 +12,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -20,17 +21,15 @@ import org.springframework.dao.DuplicateKeyException;
 @Service
 @Slf4j
 public class MQReceiver {
-    @Autowired
-    private IGoodsService goodsService;
+    @Autowired private IGoodsService goodsService;
 
-    @Autowired
-    private IOrderService orderService;
+    @Autowired private IOrderService orderService;
 
-    @Autowired
-    private RedisTemplate redisTemplate;
+    @Autowired private RedisTemplate<String, Object> redisTemplate;
 
-    @Autowired
-    private MQSender mqSender;
+    @Autowired private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired private MQSender mqSender;
 
     @RabbitListener(queues = RabbitMQConfig.SECKILL_QUEUE)
     public void receive(SeckillMessage seckillMessage, Channel channel, Message message) throws IOException {
@@ -40,7 +39,7 @@ public class MQReceiver {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             String mqIdempotentKey = "mq:consume:lock:" + userId + ":" + goodsId;
-            Boolean isFirstConsume = redisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 10, TimeUnit.SECONDS);
+            Boolean isFirstConsume = stringRedisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 10, TimeUnit.SECONDS);
             if (Boolean.FALSE.equals(isFirstConsume)) {
                 log.warn("【MQ 消费幂等拦截】该订单正在处理中或已处理，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
                 channel.basicAck(deliveryTag, false);
@@ -63,8 +62,8 @@ public class MQReceiver {
                 log.info("【MQReceiver】订单真实落库成功：用户{}，商品{}", userId, goodsId);
             } else {
                 log.warn("【MQReceiver】DB 落库失败(无库存)，触发兜底状态清理！释放用户{}在商品{}的限购锁", userId, goodsId);
-                redisTemplate.delete("seckillUserOrder:" + userId + ":" + goodsId);
-                redisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "1");
+                stringRedisTemplate.delete("seckillUserOrder:" + userId + ":" + goodsId);
+                stringRedisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "1");
             }
             channel.basicAck(deliveryTag, false);
         } catch (DuplicateKeyException e) {
@@ -83,8 +82,8 @@ public class MQReceiver {
             orderService.cancelTimeoutOrder(orderId);
             channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
         } catch (Exception e) {
-            log.error("【超时关单异常】，打回死信队列重试", e);
-            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, true);
+            log.error("【超时关单异常】，死信丢弃，需人工介入补偿！订单ID: {}", orderId, e);
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
         }
     }
 }

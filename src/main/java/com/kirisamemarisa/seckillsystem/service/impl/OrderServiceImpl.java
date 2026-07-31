@@ -11,6 +11,7 @@ import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -20,22 +21,19 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements IOrderService {
-    @Autowired
-    private SeckillGoodsMapper seckillGoodsMapper;
+    @Autowired private SeckillGoodsMapper seckillGoodsMapper;
 
-    @Autowired
-    private SeckillOrderMapper seckillOrderMapper;
+    @Autowired private SeckillOrderMapper seckillOrderMapper;
 
-    @Autowired
-    private RedisTemplate redisTemplate;
+    @Autowired private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired private StringRedisTemplate stringRedisTemplate;
 
     @Transactional
     @Override
     public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) {
         int updateRows = seckillGoodsMapper.decrementStock(goods.getId());
-        if (updateRows < 1) {
-            return null;
-        }
+        if (updateRows < 1) { return null; }
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setUserId(userId);
         orderInfo.setGoodsId(goods.getId());
@@ -56,19 +54,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    redisTemplate.opsForValue().set(
-                            "seckillOrderCache:" + userId + ":" + goods.getId(),
-                            orderInfo.getId(),
-                            1, TimeUnit.HOURS
-                    );
+                    redisTemplate.opsForValue().set("seckillOrderCache:" + userId + ":" + goods.getId(), orderInfo.getId(), 1, TimeUnit.HOURS);
                 }
             });
         } else {
-            redisTemplate.opsForValue().set(
-                    "seckillOrderCache:" + userId + ":" + goods.getId(),
-                    orderInfo.getId(),
-                    1, TimeUnit.HOURS
-            );
+            redisTemplate.opsForValue().set("seckillOrderCache:" + userId + ":" + goods.getId(), orderInfo.getId(), 1, TimeUnit.HOURS);
         }
         return orderInfo;
     }
@@ -77,25 +67,19 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Override
     public void cancelTimeoutOrder(Long orderId) {
         OrderInfo orderInfo = this.getById(orderId);
-        if (orderInfo == null) {
-            return;
-        }
+        if (orderInfo == null) { return; }
         boolean updated = this.update(new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<OrderInfo>()
                 .eq("id", orderId)
                 .eq("status", 0)
                 .set("status", -1));
-        if (!updated) {
-            return;
-        }
-        seckillOrderMapper.delete(
-                new QueryWrapper<SeckillOrder>().eq("order_id", orderId)
-        );
+        if (!updated) { return; }
+        seckillOrderMapper.delete(new QueryWrapper<SeckillOrder>().eq("order_id", orderId));
         seckillGoodsMapper.incrementStock(orderInfo.getGoodsId());
-        redisTemplate.opsForValue().increment("seckillGoods:" + orderInfo.getGoodsId());
+        stringRedisTemplate.opsForValue().increment("seckillGoods:" + orderInfo.getGoodsId());
         redisTemplate.delete("seckillOrderCache:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
-        redisTemplate.delete("seckillUserOrder:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
-        redisTemplate.delete("isStockEmpty:" + orderInfo.getGoodsId());
-        redisTemplate.convertAndSend("stock_replenish_channel", orderInfo.getGoodsId().toString());
+        stringRedisTemplate.delete("seckillUserOrder:" + orderInfo.getUserId() + ":" + orderInfo.getGoodsId());
+        stringRedisTemplate.delete("isStockEmpty:" + orderInfo.getGoodsId());
+        stringRedisTemplate.convertAndSend("stock_replenish_channel", orderInfo.getGoodsId().toString());
         System.out.println("====== [超时守护动作触发] 订单ID: " + orderId + " 未在1分钟内支付，系统已关单并成功回补所有库存与购买限额！======");
     }
 }

@@ -7,9 +7,12 @@ import com.kirisamemarisa.seckillsystem.service.IUserService;
 import com.kirisamemarisa.seckillsystem.vo.*;
 import jakarta.validation.Valid;
 import org.redisson.api.RBloomFilter;
+import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateIntervalUnit;
+import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -26,7 +29,7 @@ public class AdminController {
     private IUserService userService;
 
     @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Autowired
     private RedissonClient redissonClient;
@@ -40,15 +43,13 @@ public class AdminController {
     @GetMapping("/user/list")
     @ResponseBody
     public RespBean getUserList() {
-        List<User> userList = userService.list();
-        return RespBean.success(userList);
+        return RespBean.success(userService.list());
     }
 
     @GetMapping("/goods/list")
     @ResponseBody
     public RespBean getGoodsList() {
-        List<GoodsVo> goodsList = goodsService.findGoodsVo();
-        return RespBean.success(goodsList);
+        return RespBean.success(goodsService.findGoodsVo());
     }
 
     @PostMapping("/goods/add")
@@ -80,13 +81,15 @@ public class AdminController {
         }
         for (GoodsVo goods : goodsList) {
             bloomFilter.add(goods.getId());
-            redisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), goods.getStockCount());
+            stringRedisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), String.valueOf(goods.getStockCount()));
             if (goods.getStockCount() > 0) {
-                redisTemplate.delete("isStockEmpty:" + goods.getId());
+                stringRedisTemplate.delete("isStockEmpty:" + goods.getId());
             } else {
-                redisTemplate.opsForValue().set("isStockEmpty:" + goods.getId(), "0");
+                stringRedisTemplate.opsForValue().set("isStockEmpty:" + goods.getId(), "0");
             }
+            RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goods.getId());
+            rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
         }
-        return RespBean.success("灾备重置：缓存环境已经依照数据库当前状况完美恢复！");
+        return RespBean.success("灾备重置：缓存环境已经依照数据库当前状况完美恢复！(含限流器及数字仓储)");
     }
 }
