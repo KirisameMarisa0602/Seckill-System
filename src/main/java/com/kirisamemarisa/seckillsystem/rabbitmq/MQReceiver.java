@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
 import org.springframework.dao.DuplicateKeyException;
 
 @Service
@@ -39,12 +41,26 @@ public class MQReceiver {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
 
         try {
-            Boolean hasOrder = redisTemplate.hasKey("seckillOrderCache:" + userId + ":" + goodsId);
-            if (Boolean.TRUE.equals(hasOrder)) {
-                log.warn("【幂等拦截】该订单已被处理过，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
+            // ==========================================
+            // 【核心修复】：使用 SETNX 替代原来的 hasKey 检查
+            // 如果并发来两条消息，只有第一条能成功写入并返回 true。这把锁只要10秒，足够挡住瞬时的重复投递
+            // ==========================================
+            String mqIdempotentKey = "mq:consume:lock:" + userId + ":" + goodsId;
+            Boolean isFirstConsume = redisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 10, TimeUnit.SECONDS);
+
+            if (Boolean.FALSE.equals(isFirstConsume)) {
+                log.warn("【MQ 消费幂等拦截】该订单正在处理中或已处理，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
                 channel.basicAck(deliveryTag, false);
                 return;
             }
+
+            // 二次校验，防止重复购买（依然保留，作为兜底）
+            Boolean hasOrder = redisTemplate.hasKey("seckillOrderCache:" + userId + ":" + goodsId);
+            if (Boolean.TRUE.equals(hasOrder)) {
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+
             GoodsVo goodsVo = goodsService.findGoodsVoByGoodsId(goodsId);
             if (goodsVo.getStockCount() < 1) {
                 log.warn("【MQReceiver】真实库存已售罄！商品ID：{}", goodsId);
