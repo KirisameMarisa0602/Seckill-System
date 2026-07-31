@@ -2,6 +2,7 @@ package com.kirisamemarisa.seckillsystem.rabbitmq;
 
 import com.kirisamemarisa.seckillsystem.config.RabbitMQConfig;
 import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
+import com.kirisamemarisa.seckillsystem.mapper.GoodsMapper;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
@@ -30,6 +31,9 @@ public class MQReceiver {
     @Autowired private StringRedisTemplate stringRedisTemplate;
 
     @Autowired private MQSender mqSender;
+
+    @Autowired
+    private GoodsMapper goodsMapper;
 
     @RabbitListener(queues = RabbitMQConfig.SECKILL_QUEUE)
     public void receive(SeckillMessage seckillMessage, Channel channel, Message message) throws IOException {
@@ -84,6 +88,30 @@ public class MQReceiver {
         } catch (Exception e) {
             log.error("【超时关单异常】，死信丢弃，需人工介入补偿！订单ID: {}", orderId, e);
             channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+        }
+    }
+
+    @RabbitListener(queues = RabbitMQConfig.COMPENSATE_QUEUE)
+    public void receiveCompensate(Long orderId, Channel channel, Message message) throws IOException {
+        log.info("【容错补偿节点】开始处理补偿订单，ID：{}", orderId);
+        long deliveryTag = message.getMessageProperties().getDeliveryTag();
+        try {
+            OrderInfo orderInfo = orderService.getById(orderId);
+            if (orderInfo == null) {
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+            int res = goodsMapper.decrementGoodsStock(orderInfo.getGoodsId());
+            if (res > 0) {
+                log.info("【容错补偿节点】订单 {} 主库存补偿扣减成功！拯救了一笔错账！", orderId);
+            } else {
+                log.warn("【容错补偿节点】库存可能已经为0，或者订单数据异常。需核对商品: {}", orderInfo.getGoodsId());
+            }
+            channel.basicAck(deliveryTag, false);
+
+        } catch (Exception e) {
+            log.error("【致命错误】容错补偿节点也发生异常，订单: {}，可能是数据库宕机！拒绝 ACK 回到队列等待下次重试！", orderId, e);
+            channel.basicNack(deliveryTag, false, true);
         }
     }
 }

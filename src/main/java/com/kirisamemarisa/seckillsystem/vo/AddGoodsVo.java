@@ -1,5 +1,6 @@
 package com.kirisamemarisa.seckillsystem.vo;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -36,4 +37,12 @@ public class AddGoodsVo {
 
     @NotNull(message = "秒杀结束时间不能为空")
     private Date endDate;
+
+    @AssertTrue(message = "无效的活动时间：秒杀结束时间必须晚于开始时间")
+    public boolean isValidDateRange() {
+        if (startDate == null || endDate == null) {
+            return true;
+        }
+        return endDate.after(startDate);
+    }
 }

@@ -72,9 +72,14 @@ public class SeckillController {
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         String realPath = (String) redisTemplate.opsForValue().get(pathKey);
         if (!path.equals(realPath)) { return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL); }
+        long expireSeconds = (goodsVo.getEndDate().getTime() - now) / 1000;
+        if (expireSeconds <= 0) {
+            expireSeconds = 3600;
+        }
         Long result = stringRedisTemplate.execute(
                 seckillScript,
-                Arrays.asList("seckillGoods:" + goodsId, "seckillUserOrder:" + user.getId() + ":" + goodsId, "isStockEmpty:" + goodsId)
+                Arrays.asList("seckillGoods:" + goodsId, "seckillUserOrder:" + user.getId() + ":" + goodsId, "isStockEmpty:" + goodsId),
+                String.valueOf(expireSeconds)
         );
         if (result == null || result == 0L) {
             emptyStockCache.put(goodsId, true);
