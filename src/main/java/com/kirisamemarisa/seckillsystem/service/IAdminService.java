@@ -6,6 +6,6 @@ import com.kirisamemarisa.seckillsystem.vo.AdminLoginVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 
 public interface IAdminService extends IService<Admin> {
-    // 真实查库登录逻辑
+    //管理员登陆
     RespBean login(AdminLoginVo vo);
 }

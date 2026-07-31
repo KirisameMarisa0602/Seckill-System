@@ -2,10 +2,12 @@ package com.kirisamemarisa.seckillsystem.exception;
 
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+@Slf4j
 //把所有的controller报错拦截，处理后通过jackson传给前端，相当于 @ControllerAdvice + @ResponseBody
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -24,6 +26,8 @@ public class GlobalExceptionHandler {
             respBean.setMessage("参数校验异常：" + ex.getBindingResult().getAllErrors().get(0).getDefaultMessage());
             return respBean;
         }
+        //加上未知错误的日志打印，决不能在生产环境吞噬核心异常！
+        log.error("【系统全局异常拦截】", e);
         return RespBean.error(RespBeanEnum.ERROR);
     }
 }

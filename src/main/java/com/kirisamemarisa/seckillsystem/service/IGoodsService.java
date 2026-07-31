@@ -10,12 +10,14 @@ import com.kirisamemarisa.seckillsystem.vo.UpdateGoodsVo;
 import java.util.List;
 
 public interface IGoodsService extends IService<Goods> {
+    //给前端的所有商品视图对象
     List<GoodsVo> findGoodsVo();
+    //根据ID找商品
     GoodsVo findGoodsVoByGoodsId(Long goodsId);
-
-    // 新增：B端后台上架秒杀商品
+    //管理员上架商品
     RespBean addSeckillGoods(AddGoodsVo addGoodsVo);
-    // 新增：B端联动下架秒杀商品
+    //管理员删除商品
     RespBean deleteSeckillGoods(Long goodsId);
+    //管理员热更新商品信息
     RespBean updateSeckillGoods(UpdateGoodsVo updateGoodsVo);
 }
