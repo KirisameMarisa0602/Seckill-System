@@ -19,10 +19,16 @@ public class RabbitMQConfig {
     public static final String DEAD_LETTER_QUEUE = "seckill.dlq.queue";
     public static final String DEAD_LETTER_EXCHANGE = "seckill.dlx.exchange";
     public static final String DEAD_LETTER_ROUTING_KEY = "seckill.dlx.routing.key";
+    public static final String ERROR_DEAD_LETTER_QUEUE = "seckill.error.dlq.queue";
+    public static final String ERROR_DEAD_LETTER_EXCHANGE = "seckill.error.dlx.exchange";
+    public static final String ERROR_DEAD_LETTER_ROUTING_KEY = "seckill.error.dlx.routing.key";
 
     @Bean
     public Queue seckillQueue() {
-        return new Queue(SECKILL_QUEUE, true);
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", ERROR_DEAD_LETTER_EXCHANGE);
+        args.put("x-dead-letter-routing-key", ERROR_DEAD_LETTER_ROUTING_KEY);
+        return new Queue(SECKILL_QUEUE, true, false, false, args);
     }
 
     @Bean
@@ -67,6 +73,21 @@ public class RabbitMQConfig {
     @Bean
     public Binding delayBinding() {
         return BindingBuilder.bind(delayQueue()).to(delayExchange()).with(DELAY_ROUTING_KEY);
+    }
+
+    @Bean
+    public DirectExchange errorDeadLetterExchange() {
+        return new DirectExchange(ERROR_DEAD_LETTER_EXCHANGE);
+    }
+
+    @Bean
+    public Queue errorDeadLetterQueue() {
+        return new Queue(ERROR_DEAD_LETTER_QUEUE, true);
+    }
+
+    @Bean
+    public Binding errorDeadLetterBinding() {
+        return BindingBuilder.bind(errorDeadLetterQueue()).to(errorDeadLetterExchange()).with(ERROR_DEAD_LETTER_ROUTING_KEY);
     }
 
     @Bean

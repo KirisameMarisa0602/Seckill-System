@@ -62,6 +62,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         redisTemplate.opsForValue().set("seckillGoods:" + newGoodsId, addGoodsVo.getSeckillStock());
         redisTemplate.delete("isStockEmpty:" + newGoodsId);
         RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        if (!bloomFilter.isExists()) {
+            bloomFilter.tryInit(10000L, 0.01);
+        }
         bloomFilter.add(newGoodsId);
         return RespBean.success("商品上架成功！新增ID为：" + newGoodsId);
     }
