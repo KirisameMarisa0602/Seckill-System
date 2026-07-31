@@ -77,6 +77,8 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 //如果需要登录，但是你没有登陆的token，那不予放行
                 if (user == null) {
                     render(response, RespBeanEnum.USER_NOT_EXIST);
+                    //提前清理线程绑定的用户对象，防止false未能触发afterCompletion方法中的清理方法
+                    UserContext.remove();
                     return false;
                 }
                 key += ":" + user.getId();
@@ -96,11 +98,17 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
             //检查是否访问过于频繁
             if (result != null && result == 0L) {
                 render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
+                //提前清理线程绑定的用户对象，防止false未能触发afterCompletion方法中的清理方法
+                UserContext.remove();
                 return false;
             }
         }
         return true;
     }
+
+    //只有当 preHandle 返回 true 时，才会在请求结束时回调 afterCompletion 方法（其中包含了remove 操作）
+    //如果在中途因为没登录或者触发了限流，导致你直接 return false;，那么 afterCompletion 是绝对不会执行的。
+    //最终导致这个带有用户信息的线程被扔回了 Tomcat 的公用线程池，一旦下个请求复用了这个线程，就会直接“盗用”上一个用户的身份（即严重越权）。
 
     //Tomcat里的线程是循环利用的
     //ThreadLocal需要及时清空（执行 remove()）
