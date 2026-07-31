@@ -18,20 +18,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import com.wf.captcha.ArithmeticCaptcha;
 import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
-import org.springframework.web.bind.annotation.PathVariable;
 
 @Slf4j
 @RestController
@@ -58,6 +52,11 @@ public class SeckillController {
     @ResponseBody
     public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
+        GoodsVo goodsVo = goodsService.findGoodsVoByGoodsId(goodsId);
+        long now = System.currentTimeMillis();
+        if(goodsVo == null || now < goodsVo.getStartDate().getTime() || now > goodsVo.getEndDate().getTime()){
+            return RespBean.error(RespBeanEnum.SECKILL_NOT_START);
+        }
         RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
         if (!rateLimiter.tryAcquire(1)) {
             log.warn("【令牌桶限流触发】请求已被抛弃：流量过载！商品ID：{}，拦截的用户ID：{}", goodsId, user.getId());

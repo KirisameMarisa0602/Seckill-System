@@ -48,6 +48,7 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 int maxCount = accessLimit.maxCount();
                 boolean needLogin = accessLimit.needLogin();
                 String key = request.getRequestURI();
+
                 if (needLogin) {
                     if (user == null) {
                         render(response, RespBeanEnum.USER_NOT_EXIST);
@@ -55,6 +56,18 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                         return false;
                     }
                     key += ":" + user.getId();
+                } else {
+                    String ip = request.getHeader("X-Real-IP");
+                    if (!StringUtils.hasText(ip) || "unknown".equalsIgnoreCase(ip)) {
+                        String xff = request.getHeader("X-Forwarded-For");
+                        if (StringUtils.hasText(xff) && !"unknown".equalsIgnoreCase(xff)) {
+                            ip = xff.split(",")[0].trim();
+                        }
+                    }
+                    if (!StringUtils.hasText(ip) || "unknown".equalsIgnoreCase(ip)) {
+                        ip = request.getRemoteAddr();
+                    }
+                    key += ":" + ip;
                 }
                 AccessKey accessKey = AccessKey.withExpire(second);
                 String realKey = accessKey.getPrefix() + key;
@@ -64,7 +77,6 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                         String.valueOf(maxCount),
                         String.valueOf(second)
                 );
-
                 if (result != null && result == 0L) {
                     render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                     UserContext.remove();

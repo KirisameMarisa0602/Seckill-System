@@ -1,6 +1,6 @@
 package com.kirisamemarisa.seckillsystem.controller;
 
-import com.kirisamemarisa.seckillsystem.entity.User;
+import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import com.kirisamemarisa.seckillsystem.service.IAdminService;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.service.IUserService;
@@ -12,28 +12,28 @@ import org.redisson.api.RateIntervalUnit;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 
 @RestController
 @RequestMapping("/admin")
 public class AdminController {
-    @Autowired
-    private IAdminService adminService;
+    @Autowired private IAdminService adminService;
 
-    @Autowired
-    private IGoodsService goodsService;
+    @Autowired private IGoodsService goodsService;
 
-    @Autowired
-    private IUserService userService;
+    @Autowired private IUserService userService;
 
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
+    @Autowired private StringRedisTemplate stringRedisTemplate;
 
-    @Autowired
-    private RedissonClient redissonClient;
+    @Autowired private RedisTemplate<String, Object> redisTemplate;
 
+    @Autowired private RedissonClient redissonClient;
+
+    @AccessLimit(second = 60, maxCount = 5, needLogin = false)
     @PostMapping("/login")
     @ResponseBody
     public RespBean login(@Valid @RequestBody AdminLoginVo vo) {
@@ -75,12 +75,14 @@ public class AdminController {
     public RespBean cacheWarmUp() {
         List<GoodsVo> goodsList = goodsService.findGoodsVo();
         RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        bloomFilter.delete();
         bloomFilter.tryInit(10000L, 0.01);
         if (goodsList == null || goodsList.isEmpty()) {
             return RespBean.error(null);
         }
         for (GoodsVo goods : goodsList) {
             bloomFilter.add(goods.getId());
+            redisTemplate.opsForValue().set("seckill:goodsVo:" + goods.getId(), goods, 60, TimeUnit.MINUTES);
             stringRedisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), String.valueOf(goods.getStockCount()));
             if (goods.getStockCount() > 0) {
                 stringRedisTemplate.delete("isStockEmpty:" + goods.getId());
@@ -90,6 +92,6 @@ public class AdminController {
             RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goods.getId());
             rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
         }
-        return RespBean.success("灾备重置：缓存环境已经依照数据库当前状况完美恢复！(含限流器及数字仓储)");
+        return RespBean.success("灾备重置与预热：缓存环境已经依照数据库当状况完美恢复！(含DB、限流、数字仓储等全部构建)");
     }
 }

@@ -9,14 +9,17 @@ import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.vo.*;
 import org.redisson.api.RBloomFilter;
+import org.redisson.api.RLock;
 import org.redisson.api.RRateLimiter;
 import org.redisson.api.RateIntervalUnit;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 
 @Service
@@ -27,13 +30,70 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
     @Autowired private StringRedisTemplate stringRedisTemplate;
 
+    @Autowired private RedisTemplate<String, Object> redisTemplate;
+
     @Autowired private RedissonClient redissonClient;
 
     @Override
     public List<GoodsVo> findGoodsVo() { return goodsMapper.findGoodsVo(); }
 
     @Override
-    public GoodsVo findGoodsVoByGoodsId(Long goodsId) { return goodsMapper.findGoodsVoByGoodsId(goodsId); }
+    public GoodsVo findGoodsVoByGoodsId(Long goodsId) {
+        String cacheKey = "seckill:goodsVo:" + goodsId;
+        RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        if (bloomFilter.isExists() && !bloomFilter.contains(goodsId)) {
+            return null;
+        }
+        Object cachedObj = redisTemplate.opsForValue().get(cacheKey);
+        if (cachedObj != null) {
+            GoodsVo goodsVo = (GoodsVo) cachedObj;
+            if (goodsVo.getId() != null && goodsVo.getId().equals(-1L)) {
+                return null;
+            }
+            return goodsVo;
+        }
+        RLock lock = redissonClient.getLock("seckill:goodsVo:lock:" + goodsId);
+        try {
+            if (lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+                try {
+                    cachedObj = redisTemplate.opsForValue().get(cacheKey);
+                    if (cachedObj != null) {
+                        GoodsVo goodsVo = (GoodsVo) cachedObj;
+                        if (goodsVo.getId() != null && goodsVo.getId().equals(-1L)) {
+                            return null;
+                        }
+                        return goodsVo;
+                    }
+                    GoodsVo dbGoodsVo = goodsMapper.findGoodsVoByGoodsId(goodsId);
+                    if (dbGoodsVo == null) {
+                        GoodsVo emptyObject = new GoodsVo();
+                        emptyObject.setId(-1L);
+                        redisTemplate.opsForValue().set(cacheKey, emptyObject, 1, TimeUnit.MINUTES);
+                        return null;
+                    }
+                    redisTemplate.opsForValue().set(cacheKey, dbGoodsVo, 60, TimeUnit.MINUTES);
+                    return dbGoodsVo;
+
+                } finally {
+                    lock.unlock();
+                }
+            } else {
+                Thread.sleep(100);
+                cachedObj = redisTemplate.opsForValue().get(cacheKey);
+                if (cachedObj != null) {
+                    GoodsVo goodsVo = (GoodsVo) cachedObj;
+                    if (goodsVo.getId() != null && goodsVo.getId().equals(-1L)) {
+                        return null;
+                    }
+                    return goodsVo;
+                }
+                return null;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -71,6 +131,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         seckillGoodsMapper.delete(new QueryWrapper<SeckillGoods>().eq("goods_id", goodsId));
         stringRedisTemplate.delete("seckillGoods:" + goodsId);
         stringRedisTemplate.delete("isStockEmpty:" + goodsId);
+        redisTemplate.delete("seckill:goodsVo:" + goodsId);
+        RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
+        if(rateLimiter.isExists()){ rateLimiter.delete(); }
         return RespBean.success("旧有秒杀商品已彻底下架！");
     }
 
@@ -99,6 +162,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         if (needUpdateSeckill) {
             seckillGoodsMapper.update(sg, new QueryWrapper<SeckillGoods>().eq("goods_id", goodsId));
         }
+        redisTemplate.delete("seckill:goodsVo:" + goodsId);
         if (vo.getSeckillStock() != null) {
             stringRedisTemplate.opsForValue().set("seckillGoods:" + goodsId, String.valueOf(vo.getSeckillStock()));
             if (vo.getSeckillStock() > 0) {

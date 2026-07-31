@@ -39,7 +39,7 @@ public class MQReceiver {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             String mqIdempotentKey = "mq:consume:lock:" + userId + ":" + goodsId;
-            Boolean isFirstConsume = stringRedisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 10, TimeUnit.SECONDS);
+            Boolean isFirstConsume = stringRedisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 5, TimeUnit.MINUTES);
             if (Boolean.FALSE.equals(isFirstConsume)) {
                 log.warn("【MQ 消费幂等拦截】该订单正在处理中或已处理，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
                 channel.basicAck(deliveryTag, false);

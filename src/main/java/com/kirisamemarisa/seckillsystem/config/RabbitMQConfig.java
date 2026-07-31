@@ -12,7 +12,8 @@ import java.util.Map;
 public class RabbitMQConfig {
     public static final String SECKILL_QUEUE = "seckillQueue";
     public static final String SECKILL_EXCHANGE = "seckillExchange";
-    public static final String ROUTING_KEY = "seckill.#";
+    public static final String SEND_ROUTING_KEY = "seckill.message";
+    public static final String BINDING_ROUTING_KEY = "seckill.#";
     public static final String DELAY_QUEUE = "seckill.delay.queue";
     public static final String DELAY_EXCHANGE = "seckill.delay.exchange";
     public static final String DELAY_ROUTING_KEY = "seckill.delay.routing.key";
@@ -32,24 +33,18 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public TopicExchange seckillExchange() {
-        return new TopicExchange(SECKILL_EXCHANGE);
-    }
+    public TopicExchange seckillExchange() { return new TopicExchange(SECKILL_EXCHANGE); }
 
     @Bean
     public Binding seckillBinding() {
-        return BindingBuilder.bind(seckillQueue()).to(seckillExchange()).with(ROUTING_KEY);
+        return BindingBuilder.bind(seckillQueue()).to(seckillExchange()).with(BINDING_ROUTING_KEY);
     }
 
     @Bean
-    public DirectExchange deadLetterExchange() {
-        return new DirectExchange(DEAD_LETTER_EXCHANGE);
-    }
+    public DirectExchange deadLetterExchange() { return new DirectExchange(DEAD_LETTER_EXCHANGE); }
 
     @Bean
-    public Queue deadLetterQueue() {
-        return new Queue(DEAD_LETTER_QUEUE, true);
-    }
+    public Queue deadLetterQueue() { return new Queue(DEAD_LETTER_QUEUE, true); }
 
     @Bean
     public Binding deadLetterBinding() {
@@ -61,14 +56,12 @@ public class RabbitMQConfig {
         Map<String, Object> args = new HashMap<>();
         args.put("x-dead-letter-exchange", DEAD_LETTER_EXCHANGE);
         args.put("x-dead-letter-routing-key", DEAD_LETTER_ROUTING_KEY);
-        args.put("x-message-ttl", 60000);
+        args.put("x-message-ttl", 900000);
         return new Queue(DELAY_QUEUE, true, false, false, args);
     }
 
     @Bean
-    public DirectExchange delayExchange() {
-        return new DirectExchange(DELAY_EXCHANGE);
-    }
+    public DirectExchange delayExchange() { return new DirectExchange(DELAY_EXCHANGE); }
 
     @Bean
     public Binding delayBinding() {
@@ -76,14 +69,10 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public DirectExchange errorDeadLetterExchange() {
-        return new DirectExchange(ERROR_DEAD_LETTER_EXCHANGE);
-    }
+    public DirectExchange errorDeadLetterExchange() { return new DirectExchange(ERROR_DEAD_LETTER_EXCHANGE); }
 
     @Bean
-    public Queue errorDeadLetterQueue() {
-        return new Queue(ERROR_DEAD_LETTER_QUEUE, true);
-    }
+    public Queue errorDeadLetterQueue() { return new Queue(ERROR_DEAD_LETTER_QUEUE, true); }
 
     @Bean
     public Binding errorDeadLetterBinding() {
@@ -91,7 +80,5 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public MessageConverter messageConverter() {
-        return new Jackson2JsonMessageConverter();
-    }
+    public MessageConverter messageConverter() { return new Jackson2JsonMessageConverter(); }
 }
