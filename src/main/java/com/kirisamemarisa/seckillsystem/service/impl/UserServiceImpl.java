@@ -49,8 +49,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         //密码正确颁发标识用户登陆状态的token
         String token = UUID.randomUUID().toString().replace("-", "");
 
+        // 构造一个不含敏感信息的“安全对象”存入 Redis，防止 Redis 被攻破后用户密码撞库
+        User safeUser = new User();
+        safeUser.setId(user.getId());
+        safeUser.setNickname(user.getNickname());
+        safeUser.setHead(user.getHead());
+        safeUser.setRegisterDate(user.getRegisterDate());
+
         //存进redis
-        redisTemplate.opsForValue().set(UserKey.token.getPrefix() + token, user, UserKey.token.expireSeconds(), TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(UserKey.token.getPrefix() + token, safeUser, UserKey.token.expireSeconds(), TimeUnit.SECONDS);
         return RespBean.success(token);
     }
 

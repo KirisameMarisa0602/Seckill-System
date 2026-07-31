@@ -1,5 +1,7 @@
 package com.kirisamemarisa.seckillsystem.controller;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
 import com.kirisamemarisa.seckillsystem.redis.SeckillKey;
@@ -11,6 +13,9 @@ import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import org.redisson.api.RBloomFilter;
 import org.redisson.api.RedissonClient;
+import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateType;
+import org.redisson.api.RateIntervalUnit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -24,8 +29,6 @@ import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
@@ -50,7 +53,10 @@ public class SeckillController{
     @Autowired
     private IGoodsService goodsService;
 
-    private final Map<Long, Boolean> emptyStockMap = new ConcurrentHashMap<>();
+    private final Cache<Long, Boolean> emptyStockCache = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterAccess(1, TimeUnit.HOURS)
+            .build();
 
     @RequestMapping(value = "/{path}/doSeckill", method = RequestMethod.POST)
     @ResponseBody
@@ -58,12 +64,18 @@ public class SeckillController{
         if (user == null) {
             return RespBean.error(RespBeanEnum.USER_NOT_EXIST);
         }
+        RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
+        rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
+        if (!rateLimiter.tryAcquire(1)) {
+            log.warn("【令牌桶限流触发】请求已被抛弃：流量过载！商品ID：{}，拦截的用户ID：{}", goodsId, user.getId());
+            return RespBean.error(RespBeanEnum.RATE_LIMIT_ERROR);
+        }
         RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
         if (!bloomFilter.contains(goodsId)) {
             log.warn("检测到恶意穿透请求，非法的商品ID: {}", goodsId);
             return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
         }
-        Boolean over = emptyStockMap.get(goodsId);
+        Boolean over = emptyStockCache.getIfPresent(goodsId);
         if (over != null && over) {
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         }
@@ -81,7 +93,7 @@ public class SeckillController{
                 )
         );
         if (result == null || result == 0L) {
-            emptyStockMap.put(goodsId, true);
+            emptyStockCache.put(goodsId, true);
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
@@ -160,7 +172,7 @@ public class SeckillController{
     }
 
     public void clearEmptyStock(Long goodsId) {
-        emptyStockMap.remove(goodsId);
-        log.info("【本地缓存防线同步】成功清空商品 {} 的本地售罄标记，该商品起死回生！", goodsId);
+        emptyStockCache.invalidate(goodsId);
+        log.info("【本地缓存防线同步】成功清空商品 {} 的本地售价空标记，该商品起死回生！", goodsId);
     }
 }
