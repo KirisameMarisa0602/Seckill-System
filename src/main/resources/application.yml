@@ -6,7 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/seckill?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
     username: root
-    password: 20050602
+    password: ${DB_PASSWORD:123456}
 
   data:
     redis:
@@ -37,3 +37,11 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+alipay:
+  gatewayUrl: https://openapi-sandbox.dl.alipaydev.com/gateway.do
+  appId: ${ALIPAY_APPID:123456}
+  merchantPrivateKey: ${ALIPAY_PRIVATE_KEY:123456}
+  alipayPublicKey: ${ALIPAY_PUBLIC_KEY:123456}
+  notifyUrl: http://localhost:8080/pay/notify
+  returnUrl: http://localhost:8080/success.html
