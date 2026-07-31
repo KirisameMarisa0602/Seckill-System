@@ -1,5 +1,6 @@
 package com.kirisamemarisa.seckillsystem.vo;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -15,7 +16,7 @@ public class AddGoodsVo {
     private String goodsDetail;
 
     @NotNull(message = "商品原价不能为空")
-    @Min(value = 0, message = "价格不能为负数")
+    @DecimalMin(value = "0.0", message = "价格不能为负数")
     private BigDecimal goodsPrice;
 
     @NotNull(message = "商品库存不能为空")
@@ -23,6 +24,7 @@ public class AddGoodsVo {
     private Integer goodsStock;
 
     @NotNull(message = "秒杀价格不能为空")
+    @DecimalMin(value = "0.0", message = "秒杀价不能为负")
     private BigDecimal seckillPrice;
 
     @NotNull(message = "秒杀库存不能为空")

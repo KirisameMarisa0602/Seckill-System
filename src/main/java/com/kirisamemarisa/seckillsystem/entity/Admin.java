@@ -13,6 +13,7 @@ public class Admin implements Serializable {
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+
     private String username;
     private String password;
 }
