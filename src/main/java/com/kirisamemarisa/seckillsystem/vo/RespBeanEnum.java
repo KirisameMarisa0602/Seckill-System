@@ -22,7 +22,7 @@ public enum RespBeanEnum {
     ACCESS_LIMIT_REACHED(500205, "访问过于频繁，请稍后再试"),
     MOBILE_HAS_REGISTERED(500206, "手机号已注册，请直接登录"),
     SECKILL_NOT_START(500207, "秒杀未开始或已结束"),
-    RATE_LIMIT_ERROR(500505, "当前抢购人数过多，请排队稍后再试");
+    RATE_LIMIT_ERROR(500505, "当前抢购人数过多，请排队等待稍后再试");
     //因为是规定的状态码枚举，final，不需更改，所以只需要@Getter注解
     private final Integer code;
     private final String message;
