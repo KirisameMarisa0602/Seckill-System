@@ -84,21 +84,29 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return orderInfo;
     }
 
-    /**
-     * 【核心兜底逻辑】：超时关单，释放全部资源
-     */
     @Transactional
     @Override
     public void cancelTimeoutOrder(Long orderId) {
+        // 先查出订单，主要是为了拿到商品ID和用户ID，方便后续回补库存
         OrderInfo orderInfo = this.getById(orderId);
-        // 1. 幂等与状态校验：如果订单不存在，或者状态不等于 0 (未支付)，说明用户已经支付或单据已做处理，不用关单
-        if (orderInfo == null || orderInfo.getStatus() != 0) {
-            return;
+        if (orderInfo == null) {
+            return; // 连订单都没有，直接结束
         }
 
-        // 2. 修改普通订单状态为 -1 (已取消)
-        orderInfo.setStatus(-1);
-        this.updateById(orderInfo);
+        // ==========================================
+        // 【核心修复】：利用 UpdateWrapper 执行原子更新，防止 ABA 漏洞
+        // 对应的 SQL: UPDATE t_order SET status = -1 WHERE id = #{orderId} AND status = 0
+        // 利用数据库原生行级锁，只有在它依然是未支付状态(0)时，才能将它成功改为已取消(-1)
+        // ==========================================
+        boolean updated = this.update(new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<OrderInfo>()
+                .eq("id", orderId)
+                .eq("status", 0)       // 条件：目前必须是0（未支付）
+                .set("status", -1));   // 更新：设为-1（已取消）
+
+        // 如果 updated 为 false，说明状态已经不是 0 了（大概率是死信触发时，用户恰好支付成功变为了 1），此时坚决不能释放库存！直接结束。
+        if (!updated) {
+            return;
+        }
 
         // 3. 移除秒杀订单凭证，让该用户有再抢一次的机会
         seckillOrderMapper.delete(
