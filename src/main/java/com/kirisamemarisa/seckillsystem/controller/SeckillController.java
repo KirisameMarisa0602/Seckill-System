@@ -87,7 +87,7 @@ public class SeckillController {
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
         }
-        mqSender.sendSeckillMessage(new SeckillMessage(user.getId(), goodsId));
+        mqSender.sendSeckillMessage(new SeckillMessage(user.getId(), goodsId, goodsVo.getGoodsName(), goodsVo.getSeckillPrice()));
         return RespBean.success(0);
     }
 

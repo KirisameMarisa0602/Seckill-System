@@ -22,8 +22,6 @@ import org.springframework.dao.DuplicateKeyException;
 @Service
 @Slf4j
 public class MQReceiver {
-    @Autowired private IGoodsService goodsService;
-
     @Autowired private IOrderService orderService;
 
     @Autowired private RedisTemplate<String, Object> redisTemplate;
@@ -32,8 +30,7 @@ public class MQReceiver {
 
     @Autowired private MQSender mqSender;
 
-    @Autowired
-    private GoodsMapper goodsMapper;
+    @Autowired private GoodsMapper goodsMapper;
 
     @RabbitListener(queues = RabbitMQConfig.SECKILL_QUEUE)
     public void receive(SeckillMessage seckillMessage, Channel channel, Message message) throws IOException {
@@ -54,13 +51,11 @@ public class MQReceiver {
                 channel.basicAck(deliveryTag, false);
                 return;
             }
-            GoodsVo goodsVo = goodsService.findGoodsVoByGoodsId(goodsId);
-            if (goodsVo.getStockCount() < 1) {
-                log.warn("【MQReceiver】真实库存已售罄！商品ID：{}", goodsId);
-                channel.basicAck(deliveryTag, false);
-                return;
-            }
-            OrderInfo orderInfo = orderService.createSeckillOrder(userId, goodsVo);
+            GoodsVo mockGoodsVo = new GoodsVo();
+            mockGoodsVo.setId(goodsId);
+            mockGoodsVo.setGoodsName(seckillMessage.getGoodsName());
+            mockGoodsVo.setSeckillPrice(seckillMessage.getSeckillPrice());
+            OrderInfo orderInfo = orderService.createSeckillOrder(userId, mockGoodsVo);
             if (orderInfo != null) {
                 mqSender.sendDelayOrderMessage(orderInfo.getId());
                 log.info("【MQReceiver】订单真实落库成功：用户{}，商品{}", userId, goodsId);
@@ -109,9 +104,8 @@ public class MQReceiver {
                 log.warn("【容错补偿节点】库存可能已经为0，或者订单数据异常。需核对商品: {}", orderInfo.getGoodsId());
             }
             channel.basicAck(deliveryTag, false);
-
         } catch (Exception e) {
-            log.error("【致命错误】容错补偿节点也发生异常，订单: {}，可能是数据库宕机！拒绝 ACK 回到队列等待下次重试！", orderId, e);
+            log.error("【致命错误】容错补偿节点发生异常，订单: {}，可能是数据库宕机！拒绝 ACK 回到队列重试！", orderId, e);
             channel.basicNack(deliveryTag, false, true);
         }
     }

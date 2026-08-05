@@ -8,12 +8,9 @@ import com.kirisamemarisa.seckillsystem.mapper.GoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.vo.*;
-import org.redisson.api.RBloomFilter;
-import org.redisson.api.RLock;
-import org.redisson.api.RRateLimiter;
-import org.redisson.api.RateIntervalUnit;
-import org.redisson.api.RateType;
-import org.redisson.api.RedissonClient;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -23,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.List;
 
 @Service
+@Slf4j
 public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements IGoodsService {
     @Autowired private GoodsMapper goodsMapper;
 
@@ -33,6 +31,26 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
     @Autowired private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired private RedissonClient redissonClient;
+
+    @PostConstruct
+    public void initDoubleDeleteListener() {
+        new Thread(() -> {
+            RBlockingQueue<Long> blockingQueue = redissonClient.getBlockingQueue("delay_double_delete_queue");
+            while (true) {
+                try {
+                    Long goodsId = blockingQueue.take();
+                    redisTemplate.delete("seckill:goodsVo:" + goodsId);
+                    log.info("【高可用延迟双删】从Redisson延时队列拿到指令，成功完成了商品{}的缓存二次清理", goodsId);
+                } catch (InterruptedException e) {
+                    log.warn("【高可用延迟双删】线程被中断退出");
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    log.error("【高可用延迟双删】清理异常", e);
+                }
+            }
+        }, "Double-Delete-Thread").start();
+    }
 
     @Override
     public List<GoodsVo> findGoodsVo() { return goodsMapper.findGoodsVo(); }
@@ -73,7 +91,6 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                     }
                     redisTemplate.opsForValue().set(cacheKey, dbGoodsVo, 60, TimeUnit.MINUTES);
                     return dbGoodsVo;
-
                 } finally {
                     lock.unlock();
                 }
@@ -172,15 +189,10 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                 stringRedisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "0");
             }
         }
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(500);
-                redisTemplate.delete("seckill:goodsVo:" + goodsId);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        return RespBean.success("商品信息与缓存状态热同步完毕！并加入了延迟双删保障。");
+        RBlockingQueue<Long> blockingQueue = redissonClient.getBlockingQueue("delay_double_delete_queue");
+        RDelayedQueue<Long> delayedQueue = redissonClient.getDelayedQueue(blockingQueue);
+        delayedQueue.offer(goodsId, 500, TimeUnit.MILLISECONDS);
+        return RespBean.success("商品信息与缓存状态热同步完毕！已投递容灾级延迟双删队列。");
     }
 
     @Override
