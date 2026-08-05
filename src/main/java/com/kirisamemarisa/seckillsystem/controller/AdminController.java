@@ -73,25 +73,31 @@ public class AdminController {
     @PostMapping("/warmup")
     @ResponseBody
     public RespBean cacheWarmUp() {
-        List<GoodsVo> goodsList = goodsService.findGoodsVo();
         RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
         bloomFilter.delete();
         bloomFilter.tryInit(10000L, 0.01);
-        if (goodsList == null || goodsList.isEmpty()) {
+        long total = goodsService.countSeckillGoods();
+        if (total == 0) {
             return RespBean.error(null);
         }
-        for (GoodsVo goods : goodsList) {
-            bloomFilter.add(goods.getId());
-            redisTemplate.opsForValue().set("seckill:goodsVo:" + goods.getId(), goods, 60, TimeUnit.MINUTES);
-            stringRedisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), String.valueOf(goods.getStockCount()));
-            if (goods.getStockCount() > 0) {
-                stringRedisTemplate.delete("isStockEmpty:" + goods.getId());
-            } else {
-                stringRedisTemplate.opsForValue().set("isStockEmpty:" + goods.getId(), "0");
+        int pageSize = 1000;
+        int totalPages = (int) Math.ceil((double) total / pageSize);
+        for (int i = 0; i < totalPages; i++) {
+            int offset = i * pageSize;
+            List<GoodsVo> list = goodsService.findGoodsVoByLimit(offset, pageSize);
+            for (GoodsVo goods : list) {
+                bloomFilter.add(goods.getId());
+                redisTemplate.opsForValue().set("seckill:goodsVo:" + goods.getId(), goods, 60, TimeUnit.MINUTES);
+                stringRedisTemplate.opsForValue().set("seckillGoods:" + goods.getId(), String.valueOf(goods.getStockCount()));
+                if (goods.getStockCount() > 0) {
+                    stringRedisTemplate.delete("isStockEmpty:" + goods.getId());
+                } else {
+                    stringRedisTemplate.opsForValue().set("isStockEmpty:" + goods.getId(), "0");
+                }
+                RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goods.getId());
+                rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
             }
-            RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goods.getId());
-            rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
         }
-        return RespBean.success("灾备重置与预热：缓存环境已经依照数据库当状况完美恢复！(含DB、限流、数字仓储等全部构建)");
+        return RespBean.success("灾备重置与预热：已采用分批加载策略，无 OOM 风险，环境完美恢复！");
     }
 }

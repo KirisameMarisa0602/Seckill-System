@@ -143,6 +143,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         Long goodsId = vo.getId();
         Goods existGoods = goodsMapper.selectById(goodsId);
         if (existGoods == null) { return RespBean.error(RespBeanEnum.BIND_ERROR); }
+        redisTemplate.delete("seckill:goodsVo:" + goodsId);
         boolean needUpdateGoods = false;
         Goods goods = new Goods();
         goods.setId(goodsId);
@@ -162,7 +163,6 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         if (needUpdateSeckill) {
             seckillGoodsMapper.update(sg, new QueryWrapper<SeckillGoods>().eq("goods_id", goodsId));
         }
-        redisTemplate.delete("seckill:goodsVo:" + goodsId);
         if (vo.getSeckillStock() != null) {
             stringRedisTemplate.opsForValue().set("seckillGoods:" + goodsId, String.valueOf(vo.getSeckillStock()));
             if (vo.getSeckillStock() > 0) {
@@ -172,6 +172,24 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                 stringRedisTemplate.opsForValue().set("isStockEmpty:" + goodsId, "0");
             }
         }
-        return RespBean.success("商品信息与缓存状态热同步完毕！");
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(500);
+                redisTemplate.delete("seckill:goodsVo:" + goodsId);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        return RespBean.success("商品信息与缓存状态热同步完毕！并加入了延迟双删保障。");
+    }
+
+    @Override
+    public long countSeckillGoods() {
+        return goodsMapper.countSeckillGoods();
+    }
+
+    @Override
+    public List<GoodsVo> findGoodsVoByLimit(int offset, int size) {
+        return goodsMapper.findGoodsVoByLimit(offset, size);
     }
 }

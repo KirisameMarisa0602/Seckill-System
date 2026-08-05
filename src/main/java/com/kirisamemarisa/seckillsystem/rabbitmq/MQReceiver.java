@@ -41,8 +41,8 @@ public class MQReceiver {
         Long userId = seckillMessage.getUserId();
         Long goodsId = seckillMessage.getGoodsId();
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
+        String mqIdempotentKey = "mq:consume:lock:" + userId + ":" + goodsId;
         try {
-            String mqIdempotentKey = "mq:consume:lock:" + userId + ":" + goodsId;
             Boolean isFirstConsume = stringRedisTemplate.opsForValue().setIfAbsent(mqIdempotentKey, "1", 5, TimeUnit.MINUTES);
             if (Boolean.FALSE.equals(isFirstConsume)) {
                 log.warn("【MQ 消费幂等拦截】该订单正在处理中或已处理，直接 ACK 丢弃。用户ID:{}, 商品ID:{}", userId, goodsId);
@@ -75,6 +75,7 @@ public class MQReceiver {
             channel.basicAck(deliveryTag, false);
         } catch (Exception e) {
             log.error("【MQReceiver】订单消费发生未知异常，抛弃或转入死信队列：{}", e.getMessage());
+            stringRedisTemplate.delete(mqIdempotentKey);
             channel.basicNack(deliveryTag, false, false);
         }
     }

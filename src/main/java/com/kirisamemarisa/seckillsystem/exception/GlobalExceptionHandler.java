@@ -2,8 +2,10 @@ package com.kirisamemarisa.seckillsystem.exception;
 
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -19,11 +21,23 @@ public class GlobalExceptionHandler {
             GlobalException ex = (GlobalException) e;
             return RespBean.error(ex.getRespBeanEnum());
         }
-        //Spring框架自带的参数校验异常
+        //处理@RequestBody 类型的参数校验异常
+        else if (e instanceof MethodArgumentNotValidException ex) {
+            RespBean respBean = RespBean.error(RespBeanEnum.BIND_ERROR);
+            respBean.setMessage("参数校验异常：" + ex.getBindingResult().getAllErrors().get(0).getDefaultMessage());
+            return respBean;
+        }
+        //Spring框架自带的表单类型的参数校验异常
         else if (e instanceof BindException) {
             BindException ex = (BindException) e;
             RespBean respBean = RespBean.error(RespBeanEnum.BIND_ERROR);
             respBean.setMessage("参数校验异常：" + ex.getBindingResult().getAllErrors().get(0).getDefaultMessage());
+            return respBean;
+        }
+        //处理单一参数校验异常
+        else if (e instanceof ConstraintViolationException ex) {
+            RespBean respBean = RespBean.error(RespBeanEnum.BIND_ERROR);
+            respBean.setMessage("参数校验异常：" + ex.getMessage());
             return respBean;
         }
         //加上未知错误的日志打印，决不能在生产环境吞噬核心异常！
