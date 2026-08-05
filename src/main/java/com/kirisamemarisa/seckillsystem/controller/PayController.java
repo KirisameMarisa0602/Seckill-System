@@ -26,7 +26,7 @@ public class PayController {
     @Autowired
     private IOrderService orderService;
 
-    @GetMapping("/create/{orderId}")
+    @GetMapping(value = "/create/{orderId}", produces = "text/html;charset=utf-8")
     public String payOrder(@PathVariable Long orderId) {
         OrderInfo orderInfo = orderService.getById(orderId);
         if (orderInfo == null || orderInfo.getStatus() != 0) {

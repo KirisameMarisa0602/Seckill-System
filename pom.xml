@@ -91,6 +91,11 @@
             <artifactId>alipay-sdk-java</artifactId>
             <version>4.34.0.ALL</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.4</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
