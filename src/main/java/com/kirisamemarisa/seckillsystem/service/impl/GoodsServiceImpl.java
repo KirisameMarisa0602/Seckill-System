@@ -34,9 +34,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
     @PostConstruct
     public void initDoubleDeleteListener() {
-        new Thread(() -> {
+        Thread daemonThread = new Thread(() -> {
             RBlockingQueue<Long> blockingQueue = redissonClient.getBlockingQueue("delay_double_delete_queue");
-            while (true) {
+            while (!Thread.currentThread().isInterrupted()) {
                 try {
                     Long goodsId = blockingQueue.take();
                     redisTemplate.delete("seckill:goodsVo:" + goodsId);
@@ -46,10 +46,17 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
+                    if (e instanceof org.redisson.RedissonShutdownException || redissonClient.isShutdown()) {
+                        log.warn("【高可用延迟双删】监测到 Redisson 客户端已关闭，双删守护线程安全退出。");
+                        break;
+                    }
                     log.error("【高可用延迟双删】清理异常", e);
+                    try { TimeUnit.SECONDS.sleep(1); } catch (InterruptedException ie) { break; }
                 }
             }
-        }, "Double-Delete-Thread").start();
+        }, "Double-Delete-Thread");
+        daemonThread.setDaemon(true);
+        daemonThread.start();
     }
 
     @Override
