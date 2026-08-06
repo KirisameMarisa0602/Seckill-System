@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   datasource:
@@ -34,6 +34,9 @@ spring:
         acknowledge-mode: manual
 
 mybatis-plus:
+  global-config:
+    datacenter-id: ${DATACENTER_ID:1}
+    worker-id: ${WORKER_ID:1}
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
@@ -43,5 +46,5 @@ alipay:
   appId: ${ALIPAY_APPID:123456}
   merchantPrivateKey: ${ALIPAY_PRIVATE_KEY:123456}
   alipayPublicKey: ${ALIPAY_PUBLIC_KEY:123456}
-  notifyUrl: http://localhost:8080/pay/notify
+  notifyUrl: http://3f83fc91.r21.cpolar.top/pay/notify
   returnUrl: http://localhost:8080/success.html

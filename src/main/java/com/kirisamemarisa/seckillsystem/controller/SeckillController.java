@@ -1,8 +1,7 @@
 package com.kirisamemarisa.seckillsystem.controller;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.kirisamemarisa.seckillsystem.entity.User;
+import com.kirisamemarisa.seckillsystem.manager.LocalCacheManager;
 import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
 import com.kirisamemarisa.seckillsystem.redis.SeckillKey;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
@@ -43,10 +42,7 @@ public class SeckillController {
 
     @Autowired private IGoodsService goodsService;
 
-    private final Cache<Long, Boolean> emptyStockCache = Caffeine.newBuilder()
-            .maximumSize(10000)
-            .expireAfterAccess(1, TimeUnit.HOURS)
-            .build();
+    @Autowired private LocalCacheManager cacheManager;
 
     @RequestMapping(value = "/{path}/doSeckill", method = RequestMethod.POST)
     @ResponseBody
@@ -67,7 +63,7 @@ public class SeckillController {
             log.warn("检测到恶意穿透请求，非法的商品ID: {}", goodsId);
             return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
         }
-        Boolean over = emptyStockCache.getIfPresent(goodsId);
+        Boolean over = cacheManager.checkEmpty(goodsId);
         if (over != null && over) { return RespBean.error(RespBeanEnum.EMPTY_STOCK); }
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         String realPath = (String) redisTemplate.opsForValue().get(pathKey);
@@ -82,12 +78,12 @@ public class SeckillController {
                 String.valueOf(expireSeconds)
         );
         if (result == null || result == 0L) {
-            emptyStockCache.put(goodsId, true);
+            cacheManager.putEmpty(goodsId);
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
         }
-        mqSender.sendSeckillMessage(new SeckillMessage(user.getId(), goodsId));
+        mqSender.sendSeckillMessage(new SeckillMessage(user.getId(), goodsId, goodsVo.getGoodsName(), goodsVo.getSeckillPrice()));
         return RespBean.success(0);
     }
 
@@ -135,10 +131,5 @@ public class SeckillController {
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         redisTemplate.opsForValue().set(pathKey, str, SeckillKey.getSeckillPath.expireSeconds(), TimeUnit.SECONDS);
         return RespBean.success(str);
-    }
-
-    public void clearEmptyStock(Long goodsId) {
-        emptyStockCache.invalidate(goodsId);
-        log.info("【本地缓存防线同步】成功清空商品 {} 的本地售价空标记！", goodsId);
     }
 }

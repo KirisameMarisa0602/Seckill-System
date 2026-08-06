@@ -26,7 +26,7 @@ public class PayController {
     @Autowired
     private IOrderService orderService;
 
-    @GetMapping("/create/{orderId}")
+    @GetMapping(value = "/create/{orderId}", produces = "text/html;charset=utf-8")
     public String payOrder(@PathVariable Long orderId) {
         OrderInfo orderInfo = orderService.getById(orderId);
         if (orderInfo == null || orderInfo.getStatus() != 0) {
@@ -85,11 +85,11 @@ public class PayController {
                 return "success";
             } else {
                 log.error("【支付宝异步回调】⚠️ 验签失败！极有可能是恶意流量构造的支付回执！");
-                return "failure";
+                return "fail";
             }
         } catch (Exception e) {
             log.error("处理支付宝回到事件出错", e);
-            return "failure";
+            return "fail";
         }
     }
 }

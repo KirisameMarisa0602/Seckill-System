@@ -20,4 +20,6 @@ public interface IGoodsService extends IService<Goods> {
     RespBean deleteSeckillGoods(Long goodsId);
     //管理员热更新商品信息
     RespBean updateSeckillGoods(UpdateGoodsVo updateGoodsVo);
+    long countSeckillGoods();
+    List<GoodsVo> findGoodsVoByLimit(int offset, int size);
 }
