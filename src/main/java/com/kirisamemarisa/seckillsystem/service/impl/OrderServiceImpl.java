@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
-public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements IOrderService {
+public class    OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements IOrderService {
     @Autowired private SeckillGoodsMapper seckillGoodsMapper;
 
     @Autowired private SeckillOrderMapper seckillOrderMapper;
@@ -114,6 +114,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             int res = goodsMapper.decrementGoodsStock(orderInfo.getGoodsId());
             if (res > 0) {
                 log.info("【资产流转】订单 {} 核爆完成，主商铺库存落地剥离", orderId);
+            } else {
+                log.error("【盘点报警】惊天大Bug：用户付了钱，但主表竟然没库存了！订单：{}", orderId);
+                throw new RuntimeException("【一致性预警】数据库普通库存严重不足造成长短腿");
             }
         } catch (Exception e) {
             log.error("【盘点报警】订单 {} 支付成功，但核减主库存挂了。", orderId, e);

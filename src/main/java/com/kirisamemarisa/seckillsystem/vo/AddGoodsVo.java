@@ -1,16 +1,13 @@
 package com.kirisamemarisa.seckillsystem.vo;
 
-import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.util.Date;
 
 @Data
 public class AddGoodsVo {
-    @NotNull(message = "商品名称不能为空")
+    @NotBlank(message = "商品名称不能为空且不能全为空格")
     private String goodsName;
     private String goodsTitle;
     private String goodsImg;
