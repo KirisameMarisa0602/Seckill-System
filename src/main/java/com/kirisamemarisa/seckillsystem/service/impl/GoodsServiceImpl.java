@@ -96,15 +96,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
                 }
             } else {
                 Thread.sleep(100);
-                cachedObj = redisTemplate.opsForValue().get(cacheKey);
-                if (cachedObj != null) {
-                    GoodsVo goodsVo = (GoodsVo) cachedObj;
-                    if (goodsVo.getId() != null && goodsVo.getId().equals(-1L)) {
-                        return null;
-                    }
-                    return goodsVo;
-                }
-                return null;
+                return findGoodsVoByGoodsId(goodsId);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
