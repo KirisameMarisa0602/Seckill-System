@@ -1,41 +1,36 @@
-#  企业级高并发秒杀系统 (Seckill-System)
+# 企业级高并发秒杀系统 (Seckill-System V7.0)
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.7-brightgreen.svg)
-![MySQL](https://img.shields.io/badge/MySQL-9.4.0-blue.svg)
-![Redis](https://img.shields.io/badge/Redis-高性能缓存-red.svg)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-异步削峰-orange.svg)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.6-brightgreen.svg)
+![MySQL](https://img.shields.io/badge/MySQL-9.x-blue.svg)
+![Redis](https://img.shields.io/badge/Redis-高性能混合缓存-red.svg)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-异步削峰&死信自愈-orange.svg)
 
-##  项目简介
+## 项目简介
 
-企业级高并发秒杀/抢票系统。基于 Spring Boot 4.0.7 + Redis + RabbitMQ
-构建，旨在解决高并发场景下的超卖、缓存穿透、分布式限流以及流量削峰等核心高可用问题。项目秉承规范的 DDD/MVC 分层架构思想，为应对超频并发请求提供一站式落地方案。
+本项目是一个面向生产环境的、经历过万级并发洪峰压测的**企业级高可用秒杀系统**。
+项目从最基础的裸奔直连架构引发超卖为起点，历经七次大规模底层重构，彻底解决了**高并发超卖、缓存穿透/击穿、恶意接口防刷、海量流量削峰、宕机容灾、幽灵售罄**等真实业务挑战，最终成功打通支付宝沙箱支付闭环。
 
-##  核心技术栈
+## 核心技术栈
 
-- **后端核心**: Spring Boot 4.0.7, MyBatis Framework (Java 21)
-- **数据存储**: MySQL 9.4.0 ( InnoDB )
-- **分布式缓存**: Redis + Redisson (布隆过滤器 + 分布式锁)
-- **本地缓存**: Guava Cache (应对极热点数据/防止 Redis 流量风暴)
-- **消息队列**: RabbitMQ (异步下单削峰、死信队列延迟处理)
-- **压测与调优**: JMeter, JUnit, JVM 调优
+- **后端层**: Spring Boot 3.2.6, MyBatis-Plus
+- **数据层**: MySQL 9.4.0, Redis, Redisson (布隆过滤器/分布式锁/延迟队列)
+- **中间件**: RabbitMQ (Topic/死信/延迟队列机制)
+- **安全化**: 双重 MD5, AOP 全局限流, 动态路由令牌
+- **本地缓存**: Caffeine Local Cache (抵挡售罄穿透透传)
 
-##  核心架构亮点 (TODO)
+## 架构核心演进与亮点
 
-- [ ] **接口防刷与限流**: 基于 Redis + 拦截器实现动态黑名单与 IP 级别令牌桶限流。
-- [ ] **防御缓存穿透**: 启动预热加载全局商品 ID 进 **布隆过滤器 (Bloom Filter)**，前置拦截恶意构造的无效并发请求。
-- [ ] **库存极速且安全扣减**: 舍弃低效的 DB 悲观锁表，采用 **Redis Lua 脚本** 实现极其严苛且原子性的库存预扣减，确保 **0 超卖**。
-- [ ] **异步抗压与流量削峰**: 缓存放行后即可响应前端（排队中），通过 **RabbitMQ** 异步处理耗时的 DB 入库排队操作，保障数据库不被洪峰突垮。
-- [ ] **兜底一致性补偿**: 运用 RabbitMQ 死信队列 (DLX) 机制，若用户抢单后 15 分钟未支付，自动触发补偿路由，安全回放库存。
-- [ ] **可靠消息投递**: 开启 MQ 生产端 `Confirm` 回调记录及消费端手动 `ACK`，配合本地消息表，确保订单流转消息 100% 成功。
+- [x] **V1.0 - 内存原子防超卖**: 摒弃 DB 悲观锁，采用 `Redis Lua` 脚本实现极速且强一致性的库存预扣减，达成 0 超卖。
+- [x] **V2.0 - MQ 异步流量削峰**: 引入 RabbitMQ，将秒杀请求转入异步排队，将万级 DB 单点写入并发骤降拉平，保护数据库免于崩溃。
+- [x] **V3.0 - 零信任分布式鉴权**: 废除 Session，基于 Redis 打造去中心化 Token 体系；AOP 底层注入，实现一人一单严格物理拦截。
+- [x] **V4.0 - 柔性动态安全防刷**: 引入动态算术验证码限制人工频次；秒杀真实接口通过获取时效性 UUID 动态下发，屏蔽黑客脚本直刷。
+- [x] **V5.0 - 限流与异常降级**: 依托 Redis + Lua 固定窗口做 AOP 层限流 (`@AccessLimit`)；全局异常统管消除 500 报错。
+- [x] **V6.0 - 终结幽灵售罄**: 利用 **Redis Pub/Sub 广播机制**，打破分布式单点本地缓存限制。在死信队列（订单超时未支付）或管理端回补库存时，瞬间通知全集群 JVM 清理售罄标记，库存涅槃重生！
+- [x] **V7.0 - 支付全闭环压测**: Nginx 负载均衡下接入 JMeter 万级并发压测，0 超卖、0 死锁，顺利拉起支付宝沙箱收银台完成金流闭环。
 
-##  快速启动
+## 快速启动
 
-1. 导入并在本地运行 MySQL，执行项目根目录 `sql/schema.sql` 完成建表。
-2. 配置并启动 Redis server 与 RabbitMQ。
-3. 修改 `application.yml` 中的数据源及中间件连接配置。
-4. 运行 `SeckillSystemApplication.java` 启动服务。
-
-##  压测数据对比 (演进记录)
-
--  [V0.5] 原始 DB 悲观锁直连版：TPS `待测试`
--  [V1.0] 引入 Redis + MQ 终极架构版：TPS `待测试` (确保在 0 超卖前提下实现量级飞跃)
+1. 在 MySQL 执行 `sql/schema.sql` 建表。
+2. 启动 Redis 与 RabbitMQ。
+3. 修改 `application.yml` 数据源与沙箱密钥。
+4. 启动后端，调用 `/admin/warmup` 完成全量数据与布隆过滤器预热。

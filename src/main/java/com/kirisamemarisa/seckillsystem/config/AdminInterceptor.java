@@ -1,6 +1,7 @@
 package com.kirisamemarisa.seckillsystem.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kirisamemarisa.seckillsystem.redis.AdminKey;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,8 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 public class AdminInterceptor implements HandlerInterceptor {
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    @Autowired private RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -25,12 +25,13 @@ public class AdminInterceptor implements HandlerInterceptor {
             returnError(response, "非法请求：未携带Admin-Token");
             return false;
         }
-        Object adminInfo = redisTemplate.opsForValue().get("admin:ticket:" + adminToken);
+        String realKey = AdminKey.token.getPrefix() + adminToken;
+        Object adminInfo = redisTemplate.opsForValue().get(realKey);
         if (adminInfo == null) {
             returnError(response, "管理员认证失败或Token已过期，请重新登录");
             return false;
         }
-        redisTemplate.expire("admin:ticket:" + adminToken, 30, TimeUnit.MINUTES);
+        redisTemplate.expire(realKey, AdminKey.token.expireSeconds(), TimeUnit.SECONDS);
         return true;
     }
 

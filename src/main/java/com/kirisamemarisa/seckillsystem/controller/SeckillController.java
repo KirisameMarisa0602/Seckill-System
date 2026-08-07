@@ -3,6 +3,8 @@ package com.kirisamemarisa.seckillsystem.controller;
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.manager.LocalCacheManager;
 import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
+import com.kirisamemarisa.seckillsystem.redis.GoodsKey;
+import com.kirisamemarisa.seckillsystem.redis.OrderKey;
 import com.kirisamemarisa.seckillsystem.redis.SeckillKey;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
@@ -23,8 +25,10 @@ import com.wf.captcha.ArithmeticCaptcha;
 import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.concurrent.TimeUnit;
+import java.time.ZoneId;
 import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
+import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 
 @Slf4j
 @RestController
@@ -49,8 +53,11 @@ public class SeckillController {
     public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
         GoodsVo goodsVo = goodsService.findGoodsVoByGoodsId(goodsId);
+        if (goodsVo == null) { return RespBean.error(RespBeanEnum.SECKILL_NOT_START); }
         long now = System.currentTimeMillis();
-        if(goodsVo == null || now < goodsVo.getStartDate().getTime() || now > goodsVo.getEndDate().getTime()){
+        long startTime = goodsVo.getStartDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long endTime = goodsVo.getEndDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        if(now < startTime || now > endTime){
             return RespBean.error(RespBeanEnum.SECKILL_NOT_START);
         }
         RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
@@ -68,13 +75,15 @@ public class SeckillController {
         String pathKey = SeckillKey.getSeckillPath.getPrefix() + user.getId() + ":" + goodsId;
         String realPath = (String) redisTemplate.opsForValue().get(pathKey);
         if (!path.equals(realPath)) { return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL); }
-        long expireSeconds = (goodsVo.getEndDate().getTime() - now) / 1000;
-        if (expireSeconds <= 0) {
-            expireSeconds = 3600;
-        }
+        long expireSeconds = (endTime - now) / 1000;
+        if (expireSeconds <= 0) expireSeconds = 3600;
         Long result = stringRedisTemplate.execute(
                 seckillScript,
-                Arrays.asList("seckillGoods:" + goodsId, "seckillUserOrder:" + user.getId() + ":" + goodsId, "isStockEmpty:" + goodsId),
+                Arrays.asList(
+                        GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId,
+                        OrderKey.seckillUserOrder.getPrefix() + user.getId() + ":" + goodsId,
+                        GoodsKey.isStockEmpty.getPrefix() + goodsId
+                ),
                 String.valueOf(expireSeconds)
         );
         if (result == null || result == 0L) {
@@ -91,9 +100,9 @@ public class SeckillController {
     @ResponseBody
     public RespBean getResult(User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
-        Object orderIdStr = redisTemplate.opsForValue().get("seckillOrderCache:" + user.getId() + ":" + goodsId);
-        if (orderIdStr != null) { return RespBean.success(Long.parseLong(orderIdStr.toString())); }
-        boolean isStockEmpty = stringRedisTemplate.hasKey("isStockEmpty:" + goodsId);
+        Object orderIdStr = redisTemplate.opsForValue().get(OrderKey.seckillOrderCache.getPrefix() + user.getId() + ":" + goodsId);
+        if (orderIdStr != null) { return RespBean.success(String.valueOf(orderIdStr)); }
+        boolean isStockEmpty = stringRedisTemplate.hasKey(GoodsKey.isStockEmpty.getPrefix() + goodsId);
         if (isStockEmpty) { return RespBean.success(-1); }
         return RespBean.success(0);
     }
@@ -101,15 +110,16 @@ public class SeckillController {
     @AccessLimit(second = 5, maxCount = 5, needLogin = true)
     @GetMapping(value = "/captcha")
     public void getCaptcha(User user, @RequestParam("goodsId") Long goodsId, HttpServletResponse response) {
-        if (user == null || goodsId < 0) { throw new RuntimeException("请求非法"); }
+        if (user == null || goodsId < 0) {
+            throw new GlobalException(RespBeanEnum.REQUEST_ILLEGAL);
+        }
         response.setContentType("image/gif");
         response.setHeader("Pragma", "No-cache");
         response.setHeader("Cache-Control", "no-cache");
         response.setDateHeader("Expires", 0);
         ArithmeticCaptcha captcha = new ArithmeticCaptcha(130, 32);
-        String text = captcha.text();
         String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
-        redisTemplate.opsForValue().set(captchaKey, text, SeckillKey.getSeckillCaptcha.expireSeconds(), TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(captchaKey, captcha.text(), SeckillKey.getSeckillCaptcha.expireSeconds(), TimeUnit.SECONDS);
         try { captcha.out(response.getOutputStream()); } catch (Exception e) { log.error("验证码生成失败", e); }
     }
 
@@ -121,7 +131,9 @@ public class SeckillController {
         GoodsVo goods = goodsService.findGoodsVoByGoodsId(goodsId);
         if (goods == null) { return RespBean.error(RespBeanEnum.BIND_ERROR); }
         long now = System.currentTimeMillis();
-        if (now < goods.getStartDate().getTime() || now > goods.getEndDate().getTime()) { return RespBean.error(RespBeanEnum.SECKILL_NOT_START); }
+        long startTime = goods.getStartDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long endTime = goods.getEndDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        if (now < startTime || now > endTime) { return RespBean.error(RespBeanEnum.SECKILL_NOT_START); }
         if (!StringUtils.hasText(captcha)) { return RespBean.error(RespBeanEnum.CAPTCHA_ERROR); }
         String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;
         String realCaptcha = (String) redisTemplate.opsForValue().get(captchaKey);

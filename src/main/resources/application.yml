@@ -46,5 +46,5 @@ alipay:
   appId: ${ALIPAY_APPID:123456}
   merchantPrivateKey: ${ALIPAY_PRIVATE_KEY:123456}
   alipayPublicKey: ${ALIPAY_PUBLIC_KEY:123456}
-  notifyUrl: http://3f83fc91.r21.cpolar.top/pay/notify
-  returnUrl: http://localhost:8080/success.html
+  notifyUrl: http://6264536d.r21.cpolar.top/pay/notify
+  returnUrl: http://localhost:3000/success
