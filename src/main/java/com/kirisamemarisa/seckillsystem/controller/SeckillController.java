@@ -92,7 +92,7 @@ public class SeckillController {
     public RespBean getResult(User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
         Object orderIdStr = redisTemplate.opsForValue().get("seckillOrderCache:" + user.getId() + ":" + goodsId);
-        if (orderIdStr != null) { return RespBean.success(Long.parseLong(orderIdStr.toString())); }
+        if (orderIdStr != null) { return RespBean.success(String.valueOf(orderIdStr)); }
         boolean isStockEmpty = stringRedisTemplate.hasKey("isStockEmpty:" + goodsId);
         if (isStockEmpty) { return RespBean.success(-1); }
         return RespBean.success(0);
