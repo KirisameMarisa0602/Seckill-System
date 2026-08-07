@@ -65,7 +65,9 @@ public class MQReceiver {
             } else if (e instanceof DuplicateKeyException || (e.getCause() != null && e.getCause() instanceof DuplicateKeyException)) {
                 log.warn("【幂等防漏触发】捕捉到数据重复插入冲突，用户:{}, 商品:{}", userId, goodsId);
             } else {
-                log.error("【MQReceiver】订单消费发生未知异常，已终止该请求：{}", e.getMessage());
+                log.error("【MQReceiver】订单消费发生未知异常，投入错误死信队列...");
+                channel.basicNack(deliveryTag, false, false);
+                return;
             }
             stringRedisTemplate.delete(OrderKey.seckillUserOrder.getPrefix() + userId + ":" + goodsId);
             channel.basicAck(deliveryTag, false);
