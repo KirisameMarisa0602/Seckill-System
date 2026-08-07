@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -20,7 +20,6 @@ import java.util.Date;
 public class OrderInfo implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    //强制按 String 序列化给前端，防止 JS Long 精度丢失问题
     @TableId(value = "id", type = IdType.ASSIGN_ID)
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
@@ -33,6 +32,10 @@ public class OrderInfo implements Serializable {
     private BigDecimal goodsPrice;
     private Integer orderChannel;
     private Integer status;
-    private Date createDate;
-    private Date payDate;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createDate;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime payDate;
 }

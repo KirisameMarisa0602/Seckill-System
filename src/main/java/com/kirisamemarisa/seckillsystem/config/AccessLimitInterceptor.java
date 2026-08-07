@@ -19,6 +19,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import java.util.Collections;
 import java.io.PrintWriter;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class AccessLimitInterceptor implements HandlerInterceptor {
@@ -48,7 +49,17 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 int maxCount = accessLimit.maxCount();
                 boolean needLogin = accessLimit.needLogin();
                 String key = request.getRequestURI();
-
+                String ip = request.getRemoteAddr();
+                String xff = request.getHeader("X-Forwarded-For");
+                if (StringUtils.hasText(xff) && !"unknown".equalsIgnoreCase(xff)) {
+                    ip = xff.split(",")[0].trim();
+                }
+                String blackKey = AccessKey.blacklist.getPrefix() + ip;
+                if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(blackKey))) {
+                    render(response, RespBeanEnum.REQUEST_ILLEGAL);
+                    UserContext.remove();
+                    return false;
+                }
                 if (needLogin) {
                     if (user == null) {
                         render(response, RespBeanEnum.USER_NOT_EXIST);
@@ -57,16 +68,6 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                     }
                     key += ":" + user.getId();
                 } else {
-                    String ip = request.getHeader("X-Real-IP");
-                    if (!StringUtils.hasText(ip) || "unknown".equalsIgnoreCase(ip)) {
-                        String xff = request.getHeader("X-Forwarded-For");
-                        if (StringUtils.hasText(xff) && !"unknown".equalsIgnoreCase(xff)) {
-                            ip = xff.split(",")[0].trim();
-                        }
-                    }
-                    if (!StringUtils.hasText(ip) || "unknown".equalsIgnoreCase(ip)) {
-                        ip = request.getRemoteAddr();
-                    }
                     key += ":" + ip;
                 }
                 AccessKey accessKey = AccessKey.withExpire(second);
@@ -78,6 +79,7 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                         String.valueOf(second)
                 );
                 if (result != null && result == 0L) {
+                    stringRedisTemplate.opsForValue().set(blackKey, "1", AccessKey.blacklist.expireSeconds(), TimeUnit.SECONDS);
                     render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                     UserContext.remove();
                     return false;
@@ -98,8 +100,7 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
     private void render(HttpServletResponse response, RespBeanEnum respBeanEnum) throws Exception {
         response.setContentType("application/json;charset=UTF-8");
         PrintWriter out = response.getWriter();
-        RespBean respBean = RespBean.error(respBeanEnum);
-        out.write(new ObjectMapper().writeValueAsString(respBean));
+        out.write(new ObjectMapper().writeValueAsString(RespBean.error(respBeanEnum)));
         out.flush();
         out.close();
     }

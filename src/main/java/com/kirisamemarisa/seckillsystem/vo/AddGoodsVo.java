@@ -1,9 +1,10 @@
 package com.kirisamemarisa.seckillsystem.vo;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class AddGoodsVo {
@@ -30,16 +31,16 @@ public class AddGoodsVo {
     private Integer seckillStock;
 
     @NotNull(message = "秒杀开始时间不能为空")
-    private Date startDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime startDate;
 
     @NotNull(message = "秒杀结束时间不能为空")
-    private Date endDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime endDate;
 
     @AssertTrue(message = "无效的活动时间：秒杀结束时间必须晚于开始时间")
     public boolean isValidDateRange() {
-        if (startDate == null || endDate == null) {
-            return true;
-        }
-        return endDate.after(startDate);
+        if (startDate == null || endDate == null) return true;
+        return endDate.isAfter(startDate);
     }
 }
