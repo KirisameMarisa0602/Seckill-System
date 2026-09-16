@@ -48,6 +48,7 @@ const rules: FormRules = {
   ],
 }
 
+/** 校验昵称/手机号/密码后注册，成功跳转登录页，不自动登录。 */
 async function submit() {
   formError.value = ''
   alreadyRegistered.value = false

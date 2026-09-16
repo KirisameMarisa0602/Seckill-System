@@ -10,10 +10,12 @@ export interface BannerState {
 
 const FLASH_KEY = 'seckill-flash'
 
+/** 写入一次性提示，下一页 `App.vue` 会取出并展示。 */
 export function setFlash(kind: BannerKind, text: string) {
   sessionStorage.setItem(FLASH_KEY, JSON.stringify({ kind, text } satisfies BannerState))
 }
 
+/** 读取并删除一次性提示；解析失败返回 `null`。 */
 export function takeFlash(): BannerState | null {
   const raw = sessionStorage.getItem(FLASH_KEY)
   if (!raw) return null

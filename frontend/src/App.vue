@@ -19,6 +19,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const flash = ref<BannerState | null>(null)
 
+/** 把 `/goods/:id` 归到会场高亮、`/admin*` 归到后台高亮。 */
 const activePath = computed(() => {
   if (route.path.startsWith('/goods')) return '/'
   if (route.path.startsWith('/admin')) return '/admin'
@@ -33,6 +34,7 @@ watch(
   { immediate: true },
 )
 
+/** 清用户会话并回到首页；不影响管理员 Token。 */
 function logout() {
   auth.logoutUser()
   flash.value = { kind: 'info', text: '已退出登录' }

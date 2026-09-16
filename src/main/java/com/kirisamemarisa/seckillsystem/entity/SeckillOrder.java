@@ -27,11 +27,13 @@ public class SeckillOrder implements Serializable {
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
 
+    /** 下单用户，即 {@code t_user.id}（手机号）。 */
     private Long userId;
 
     /** 对应 {@code t_order.id}，同样是雪花 ID，序列化为字符串。 */
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long orderId;
 
+    /** 秒杀商品 ID，与 {@code userId} 组成一人一单唯一键。 */
     private Long goodsId;
 }

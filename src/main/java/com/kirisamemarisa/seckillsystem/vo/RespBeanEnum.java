@@ -28,7 +28,9 @@ public enum RespBeanEnum {
     SECKILL_NOT_START(500207, "秒杀未开始或已结束"),
     /** 商品详情缓存击穿时抢锁失败，提示前端稍后重试。 */
     RATE_LIMIT_ERROR(500505, "当前抢购人数过多，请排队等待稍后再试");
-    //因为是规定的状态码枚举，final，不需更改，所以只需要@Getter注解
+
+    /** HTTP/业务码。200 成功，其余为失败。 */
     private final Integer code;
+    /** 给前端展示的文案；部分接口会在返回前改写。 */
     private final String message;
 }

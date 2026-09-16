@@ -30,6 +30,7 @@ const rules: FormRules = {
   password: [{ required: true, message: '请输入管理员密码', trigger: ['blur', 'change'] }],
 }
 
+/** 校验账号密码后保存管理员会话并进入控制台。 */
 async function submit() {
   formError.value = ''
   formSuccess.value = ''

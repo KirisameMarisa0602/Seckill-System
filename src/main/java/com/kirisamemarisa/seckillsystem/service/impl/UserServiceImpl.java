@@ -30,6 +30,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Autowired private PasswordEncoder passwordEncoder;
 
+    /**
+     * 校验手机号与密码，签发 Token 并更新最近登录时间。
+     *
+     * @param loginVo 手机号 + 密码
+     * @return 成功时 {@code obj} 为 token；失败 {@code LOGIN_ERROR}
+     */
     @Override
     public RespBean doLogin(LoginVo loginVo) {
         String mobile = loginVo.getMobile();
@@ -51,6 +57,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return RespBean.success(token);
     }
 
+    /**
+     * 按手机号注册。已存在则拒绝；新账号密码直接 BCrypt。
+     *
+     * @param registerVo 昵称、手机号、明文密码
+     * @return 成功提示，或 {@code MOBILE_HAS_REGISTERED}
+     */
     @Override
     public RespBean doRegister(RegisterVo registerVo) {
         String mobile = registerVo.getMobile();

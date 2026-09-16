@@ -11,8 +11,12 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class PageResult<T> {
+    /** 符合条件的总条数，不是当前页条数。 */
     private long total;
+    /** 当前页码，从 1 起。 */
     private long page;
+    /** 每页条数。 */
     private long pageSize;
+    /** 当前页数据。 */
     private List<T> records;
 }

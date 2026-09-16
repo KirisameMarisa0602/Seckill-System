@@ -1,9 +1,7 @@
 package com.kirisamemarisa.seckillsystem.config;
 
 import com.kirisamemarisa.seckillsystem.entity.User;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.MethodParameter;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
@@ -18,8 +16,6 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  */
 @Component
 public class UserArgumentResolver implements HandlerMethodArgumentResolver {
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
     /**
      * 仅处理参数类型为 {@link User} 的方法参数。
      *

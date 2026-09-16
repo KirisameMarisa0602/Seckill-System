@@ -14,8 +14,11 @@ import java.time.LocalDateTime;
 public class AddGoodsVo {
     @NotBlank(message = "商品名称不能为空且不能全为空格")
     private String goodsName;
+    /** 副标题，可空。 */
     private String goodsTitle;
+    /** 封面图 URL，可空。 */
     private String goodsImg;
+    /** 详情文案，可空。 */
     private String goodsDetail;
 
     @NotNull(message = "商品原价不能为空")

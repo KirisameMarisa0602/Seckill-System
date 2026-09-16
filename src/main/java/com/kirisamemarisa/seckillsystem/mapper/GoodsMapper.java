@@ -13,7 +13,8 @@ import java.util.List;
 public interface GoodsMapper extends BaseMapper<Goods> {
     /** {@code t_goods} INNER JOIN {@code t_seckill_goods}，只返回已配置秒杀场次的商品。 */
     @Select("SELECT g.*, sg.seckill_price, sg.stock_count, sg.start_date, sg.end_date " +
-            "FROM t_goods g INNER JOIN t_seckill_goods sg ON g.id = sg.goods_id")
+            "FROM t_goods g INNER JOIN t_seckill_goods sg ON g.id = sg.goods_id " +
+            "ORDER BY g.id")
     List<GoodsVo> findGoodsVo();
 
     /** 按商品主键联表查一条秒杀视图。 */
@@ -35,7 +36,7 @@ public interface GoodsMapper extends BaseMapper<Goods> {
     /** 同上联表，附加 {@code LIMIT offset, size} 给后台分页。 */
     @Select("SELECT g.*, sg.seckill_price, sg.stock_count, sg.start_date, sg.end_date " +
             "FROM t_goods g INNER JOIN t_seckill_goods sg ON g.id = sg.goods_id " +
-            "LIMIT #{offset}, #{size}")
+            "ORDER BY g.id LIMIT #{offset}, #{size}")
     List<GoodsVo> findGoodsVoByLimit(@org.apache.ibatis.annotations.Param("offset") int offset,
                                      @org.apache.ibatis.annotations.Param("size") int size);
 }

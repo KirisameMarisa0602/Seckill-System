@@ -22,12 +22,22 @@ public class PaymentRecord {
     /** 关联 {@code t_order.id}，同样字符串化以免前端精度丢失。 */
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long orderId;
+    /** 支付宝交易号，表上唯一，异步通知靠它做幂等。 */
     private String tradeNo;
+    /** 实付金额，须与订单秒杀价一致。 */
     private BigDecimal amount;
+    /** 收款应用 APPID。 */
     private String appId;
+    /** 卖家支付宝账号（PID），可空。 */
     private String sellerId;
     /** {@code PAID} 已入账；{@code REFUND_PENDING} 关单后到账或主库存不足，待人工退款。 */
     private String status;
+
+    /** 流水创建时间。 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createDate;
+
+    /** 最近更新时间。 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime updateDate;
 }

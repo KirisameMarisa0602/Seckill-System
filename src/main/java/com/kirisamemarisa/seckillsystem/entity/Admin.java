@@ -17,6 +17,7 @@ public class Admin implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /** 登录用户名，表上唯一。 */
     private String username;
     /** BCrypt（{@code $2} 开头）或遗留无盐 MD5；登录成功后会升级。 */
     private String password;

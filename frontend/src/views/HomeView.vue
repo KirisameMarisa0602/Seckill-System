@@ -26,10 +26,12 @@ const pageSize = 12
 const total = ref(0)
 const pageError = ref('')
 
+/** 把后端 `yyyy-MM-dd HH:mm:ss` 转成时间戳，按本地时区解析。 */
 function parseTime(value: string) {
   return new Date(value.replace(' ', 'T')).getTime()
 }
 
+/** 按当前时间与库存判断场次状态：即将开始 / 抢购中 / 已售罄 / 已结束。 */
 function stateOf(item: Goods) {
   const now = Date.now()
   if (now < parseTime(item.startDate)) return { label: '即将开始', type: 'info' }
@@ -38,6 +40,7 @@ function stateOf(item: Goods) {
   return { label: '抢购中', type: 'success' }
 }
 
+/** 拉取当前页商品；失败时清空列表并展示错误条。 */
 async function loadGoods() {
   loading.value = true
   pageError.value = ''
@@ -53,6 +56,7 @@ async function loadGoods() {
   }
 }
 
+/** 翻页并滚回顶部。 */
 function changePage(value: number) {
   page.value = value
   loadGoods()

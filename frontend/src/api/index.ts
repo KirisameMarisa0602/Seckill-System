@@ -49,6 +49,7 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
   }
 }
 
+/** 验证码/支付页拿到 Blob 时，若实际是 JSON 错误体则解析并抛 {@link ApiError}。 */
 async function parseBlobError(data: Blob, fallback: string) {
   const text = await data.text()
   try {

@@ -26,6 +26,7 @@ const total = ref(0)
 const pageError = ref('')
 const payHint = ref('')
 
+/** 订单状态文案：0 待支付，1 已支付，-1 已取消，-2 待退款。 */
 const statusMap: Record<number, { label: string; type: 'warning' | 'success' | 'info' | 'danger' }> = {
   0: { label: '待支付', type: 'warning' },
   1: { label: '已支付', type: 'success' },
@@ -33,6 +34,7 @@ const statusMap: Record<number, { label: string; type: 'warning' | 'success' | '
   [-2]: { label: '待退款处理', type: 'danger' },
 }
 
+/** 分页拉取当前用户订单。 */
 async function loadOrders() {
   loading.value = true
   pageError.value = ''
@@ -48,6 +50,7 @@ async function loadOrders() {
   }
 }
 
+/** 先开空白窗口再写入收银台 HTML，避免弹窗拦截导致无法支付。 */
 async function pay(order: Order) {
   payHint.value = ''
   const paymentWindow = window.open('', '_blank')

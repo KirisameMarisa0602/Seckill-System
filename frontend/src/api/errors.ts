@@ -21,6 +21,7 @@ export function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+/** 取出业务码；非 {@link ApiError} 时返回 0。 */
 export function errorCode(error: unknown) {
   return error instanceof ApiError ? error.code : 0
 }

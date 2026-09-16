@@ -58,16 +58,19 @@ const pageSize = 20
 const notice = ref('')
 const noticeKind = ref<BannerKind>('info')
 
+/** 在控制台顶部展示一条结果条。 */
 function showNotice(kind: BannerKind, text: string) {
   noticeKind.value = kind
   notice.value = text
 }
 
+/** 把 Date 格式化成后端要求的 `yyyy-MM-dd HH:mm:ss`。 */
 function formatDate(date: Date) {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+/** 新增商品表单的默认值：5 分钟后开抢，持续 1 小时。 */
 const emptyForm = (): GoodsForm => ({
   goodsName: '',
   goodsTitle: '',
@@ -92,28 +95,33 @@ const rules: FormRules = {
   endDate: [{ required: true, message: '请选择结束时间', trigger: 'change' }],
 }
 
+/** 当前页秒杀库存合计，仅作对账参考，不是 Redis 实时库存。 */
 const totalInventory = computed(() =>
   goods.value.reduce((sum, item) => sum + Number(item.stockCount || 0), 0),
 )
 
+/** 分页拉取后台商品列表。 */
 async function loadGoods() {
   const result = await adminApi.goods(goodsPage.value, pageSize)
   goods.value = result.records
   goodsTotal.value = result.total
 }
 
+/** 分页拉取用户摘要。 */
 async function loadUsers() {
   const result = await adminApi.users(usersPage.value, pageSize)
   users.value = result.records
   usersTotal.value = result.total
 }
 
+/** 分页拉取待退款工单。 */
 async function loadRefunds() {
   const result = await adminApi.refunds(refundsPage.value, pageSize)
   refunds.value = result.records
   refundsTotal.value = result.total
 }
 
+/** 并行刷新商品、用户、待退款三块数据。 */
 async function loadAll() {
   loading.value = true
   try {
@@ -125,12 +133,14 @@ async function loadAll() {
   }
 }
 
+/** 打开新增商品弹窗，表单重置为默认值。 */
 function openAdd() {
   editing.value = false
   Object.assign(form, emptyForm())
   dialogVisible.value = true
 }
 
+/** 打开编辑弹窗，把列表行的 `stockCount` 映射成表单的 `seckillStock`。 */
 function openEdit(item: Goods) {
   editing.value = true
   Object.assign(form, {
@@ -149,6 +159,7 @@ function openEdit(item: Goods) {
   dialogVisible.value = true
 }
 
+/** 校验后提交新增或更新；秒杀库存不能大于普通库存，秒杀价不能高于原价。 */
 async function saveGoods() {
   try {
     await formRef.value?.validate()
@@ -183,6 +194,7 @@ async function saveGoods() {
   }
 }
 
+/** 确认后下架商品；后端若发现待支付订单会拒绝。 */
 async function removeGoods(item: Goods) {
   try {
     await ElMessageBox.confirm(
@@ -200,6 +212,7 @@ async function removeGoods(item: Goods) {
   }
 }
 
+/** 触发后端安全预热：补商品缓存和布隆过滤器，不覆盖运行中的 Redis 可售库存。 */
 async function warmup() {
   warming.value = true
   try {
@@ -211,6 +224,7 @@ async function warmup() {
   }
 }
 
+/** 退出管理员会话并回到后台登录页。 */
 function logout() {
   auth.logoutAdmin()
   router.replace('/admin/login')

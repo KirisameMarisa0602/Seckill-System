@@ -48,6 +48,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
     @Autowired private PaymentRecordMapper paymentRecordMapper;
 
+    /**
+     * 创建秒杀订单：事务内预扣秒杀库存、插普通订单和一人一单行；成功后写 Redis 订单缓存。
+     */
     @Override
     public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) {
         OrderInfo orderInfo = transactionTemplate.execute(status -> {
@@ -80,6 +83,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return orderInfo;
     }
 
+    /**
+     * 查该用户对该商品是否已有秒杀订单。无则返回 {@code null}。
+     */
     @Override
     public Long findSeckillOrderId(Long userId, Long goodsId) {
         SeckillOrder order = seckillOrderMapper.selectOne(new QueryWrapper<SeckillOrder>()
@@ -89,6 +95,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return order == null ? null : order.getOrderId();
     }
 
+    /**
+     * 超时关单：仅待支付单改为已取消，回补秒杀库存并清 Redis 一人一单标记。
+     */
     @Override
     public void cancelTimeoutOrder(Long orderId) {
         final OrderInfo[] canceledOrder = new OrderInfo[1];
@@ -120,6 +129,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
     }
 
+    /**
+     * 支付宝异步通知入账。金额匹配且待支付则扣主库存并置已支付；关单后到账或主库存不足则待退款。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PaymentResult paySuccess(Long orderId, String tradeNo, BigDecimal amount,

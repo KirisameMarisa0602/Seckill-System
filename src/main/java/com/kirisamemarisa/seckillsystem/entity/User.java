@@ -26,6 +26,7 @@ public class User implements Serializable {
     @TableId(value = "id", type = IdType.INPUT)
     private Long id;
 
+    /** 展示用昵称。 */
     private String nickname;
     /** BCrypt 或遗留「随机盐 + 双次 MD5」哈希；序列化时忽略，避免进 Token/JSON。 */
     @JsonIgnore
@@ -35,7 +36,10 @@ public class User implements Serializable {
      */
     @JsonIgnore
     private String salt;
+    /** 头像 URL；注册时按手机号生成 DiceBear 地址。 */
     private String head;
+    /** 注册时间。 */
     private LocalDateTime registerDate;
+    /** 最近一次登录成功时间。 */
     private LocalDateTime lastLoginDate;
 }

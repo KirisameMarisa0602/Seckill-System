@@ -17,6 +17,7 @@ public class UpdateGoodsVo {
     @NotNull(message = "商品ID不能为空")
     private Long id;
 
+    /** 以下字段为 {@code null} 表示不改。 */
     private String goodsName;
     private String goodsTitle;
     private String goodsImg;

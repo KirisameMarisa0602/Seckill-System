@@ -28,12 +28,17 @@ public class OrderInfo implements Serializable {
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     private Long id;
 
+    /** 下单用户，即 {@code t_user.id}（手机号）。 */
     private Long userId;
+    /** 秒杀商品 ID。 */
     private Long goodsId;
     /** 收货地址占位，当前业务未接地址模块，固定写 0。 */
     private Long deliveryAddrId;
+    /** 下单时快照的商品名。 */
     private String goodsName;
+    /** 购买件数。秒杀路径固定 1。 */
     private Integer goodsCount;
+    /** 成交单价，取秒杀价。 */
     private BigDecimal goodsPrice;
     /** 下单渠道。秒杀路径写 1。 */
     private Integer orderChannel;

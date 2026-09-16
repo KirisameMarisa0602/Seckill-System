@@ -5,10 +5,13 @@ import com.alipay.api.DefaultAlipayClient;
 import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.kirisamemarisa.seckillsystem.config.AlipayConfig;
+import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
 import com.kirisamemarisa.seckillsystem.entity.User;
+import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.service.PaymentResult;
+import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -44,18 +47,19 @@ public class PayController {
      *
      * @param user    当前登录用户，须为订单所属人
      * @param orderId 路径变量，商户订单号（本系统订单主键）
-     * @return 支付宝返回的自动提交表单 HTML；失败时返回纯文本错误提示（非 {@link com.kirisamemarisa.seckillsystem.vo.RespBean}）
+     * @return 支付宝返回的自动提交表单 HTML；业务失败抛 {@link GlobalException}，由全局异常处理成 JSON
      * @implNote 只读校验订单状态为待支付；不写库。真正入账在 {@link #payNotify}
      */
+    @AccessLimit(second = 10, maxCount = 10, needLogin = true)
     @GetMapping(value = "/create/{orderId}", produces = "text/html;charset=utf-8")
     public String payOrder(User user, @PathVariable Long orderId) { // {orderId} 从 URL 路径绑定
         if (user == null) {
-            return "请先登录后再支付！";
+            throw new GlobalException(RespBeanEnum.USER_NOT_EXIST);
         }
         OrderInfo orderInfo = orderService.getById(orderId);
         if (orderInfo == null || !user.getId().equals(orderInfo.getUserId())
                 || !Integer.valueOf(0).equals(orderInfo.getStatus())) {
-            return "订单非法或已脱离待支付状态！";
+            throw new GlobalException(RespBeanEnum.REQUEST_ILLEGAL);
         }
         AlipayClient alipayClient = new DefaultAlipayClient(
                 alipayConfig.getGatewayUrl(),
@@ -79,7 +83,7 @@ public class PayController {
             return alipayClient.pageExecute(request).getBody();
         } catch (Exception e) {
             log.error("生成支付宝付款链接报错！", e);
-            return "调起支付失败！请稍后再试。";
+            throw new GlobalException(RespBeanEnum.ERROR);
         }
     }
 

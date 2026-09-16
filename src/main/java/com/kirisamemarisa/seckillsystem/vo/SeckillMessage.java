@@ -14,8 +14,12 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SeckillMessage implements Serializable {
+    /** 下单用户 ID。 */
     private Long userId;
+    /** 秒杀商品 ID。 */
     private Long goodsId;
+    /** 下单时快照的商品名，避免消费者再查详情。 */
     private String goodsName;
+    /** 下单时快照的秒杀价。 */
     private BigDecimal seckillPrice;
 }

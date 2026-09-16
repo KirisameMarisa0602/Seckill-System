@@ -27,6 +27,12 @@ public class AdminServiceImpl extends ServiceImpl<AdminMapper, Admin> implements
 
     @Autowired private PasswordEncoder passwordEncoder;
 
+    /**
+     * 校验管理员账号密码，签发 {@code Admin-Token} 写入 Redis。
+     *
+     * @param vo 用户名 + 明文密码
+     * @return 成功时 {@code obj} 为 token；失败 {@code LOGIN_ERROR}
+     */
     @Override
     public RespBean login(AdminLoginVo vo) {
         Admin admin = this.getOne(new QueryWrapper<Admin>().eq("username", vo.getUsername()));

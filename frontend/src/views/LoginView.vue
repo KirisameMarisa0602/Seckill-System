@@ -39,6 +39,7 @@ const rules: FormRules = {
   ],
 }
 
+/** 校验表单后登录，成功则写入 Token 并跳转 `redirect` 或会场。 */
 async function submit() {
   formError.value = ''
   formSuccess.value = ''
@@ -54,7 +55,9 @@ async function submit() {
     auth.setUserSession(token, form.mobile)
     formSuccess.value = '登录成功，正在跳转…'
     setFlash('success', '登录成功')
-    await router.replace(String(route.query.redirect || '/'))
+    const redirect = route.query.redirect
+    const target = typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/'
+    await router.replace(target)
   } catch (error) {
     formError.value = errorMessage(error, '登录失败')
   } finally {

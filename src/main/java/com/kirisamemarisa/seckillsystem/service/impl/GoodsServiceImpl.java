@@ -73,9 +73,16 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         });
     }
 
+    /**
+     * 联表查出全部秒杀商品，供后台一次性拉取或指标对账。
+     */
     @Override
     public List<GoodsVo> findGoodsVo() { return goodsMapper.findGoodsVo(); }
 
+    /**
+     * 按商品 ID 查秒杀视图：布隆过滤器 → Redis → 互斥锁回源 DB。
+     * 确定不存在返回 {@code null}（缓存里用 {@code id=-1} 占位防穿透）。
+     */
     @Override
     public GoodsVo findGoodsVoByGoodsId(Long goodsId) {
         String cacheKey = GoodsKey.getGoodsVo.getPrefix() + goodsId;
@@ -129,6 +136,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         throw new GlobalException(RespBeanEnum.RATE_LIMIT_ERROR);
     }
 
+    /**
+     * 上架秒杀商品：同一事务写入 {@code t_goods} 与 {@code t_seckill_goods}，提交后再写 Redis / 布隆 / 限流器。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RespBean addSeckillGoods(AddGoodsVo addGoodsVo) {
@@ -171,6 +181,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return RespBean.success("商品上架成功！新增ID为：" + newGoodsId);
     }
 
+    /**
+     * 下架秒杀商品。仍有待支付订单时拒绝；提交后清 Redis 库存、详情缓存和限流器。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RespBean deleteSeckillGoods(Long goodsId) {
@@ -189,6 +202,9 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return RespBean.success("旧有秒杀商品已彻底下架！");
     }
 
+    /**
+     * 热更新秒杀商品。只改入参非空字段；活动进行中或有待支付单时禁止改库存。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RespBean updateSeckillGoods(UpdateGoodsVo vo) {
@@ -313,11 +329,17 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         });
     }
 
+    /**
+     * 已配置秒杀场次的商品总数，给分页用。
+     */
     @Override
     public long countSeckillGoods() {
         return goodsMapper.countSeckillGoods();
     }
 
+    /**
+     * 联表分页查询秒杀商品。{@code offset}/{@code size} 对应 SQL {@code LIMIT offset, size}。
+     */
     @Override
     public List<GoodsVo> findGoodsVoByLimit(int offset, int size) {
         return goodsMapper.findGoodsVoByLimit(offset, size);

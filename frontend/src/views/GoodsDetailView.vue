@@ -11,9 +11,9 @@
  *
  * 关键 computed / 函数：
  * - phase：upcoming / active / soldout / ended
- * - actionLabel / canSubmit：按钮文案与是否允许提交
+ * - actionLabel：按钮文案（未登录、未开始、已结束、售罄、可提交）
  * - refreshCaptcha：刷新验证码并释放旧 Object URL
- * - submit：换 path 后入队，再 pollResult 最多约 30 秒
+ * - submit：校验验证码换 path 后入队，再 pollResult 最多约 30 秒
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Back, Goods as GoodsIcon, Refresh } from '@element-plus/icons-vue'
@@ -43,6 +43,7 @@ const now = ref(Date.now())
 let clockTimer: number | undefined
 let pollTimer: number | undefined
 
+/** 根据开抢/结束时间和库存，得到 upcoming / active / soldout / ended。 */
 const phase = computed(() => {
   if (!goods.value) return 'invalid'
   const start = new Date(goods.value.startDate.replace(' ', 'T')).getTime()
@@ -53,6 +54,7 @@ const phase = computed(() => {
   return 'active'
 })
 
+/** 主按钮文案：未登录、未开始、已结束、售罄或「验证并提交抢购」。 */
 const actionLabel = computed(() => {
   if (!auth.isLoggedIn) return '登录后参与抢购'
   if (phase.value === 'upcoming') return '活动尚未开始'
@@ -61,6 +63,7 @@ const actionLabel = computed(() => {
   return '验证并提交抢购'
 })
 
+/** 拉取商品详情；活动进行中且已登录时同时拉验证码。 */
 async function loadGoods() {
   loadError.value = ''
   try {
@@ -74,6 +77,7 @@ async function loadGoods() {
   }
 }
 
+/** 刷新算术验证码图，并释放上一张 Object URL 避免泄漏。 */
 async function refreshCaptcha() {
   if (captchaUrl.value) URL.revokeObjectURL(captchaUrl.value)
   captchaAnswer.value = ''
@@ -85,6 +89,7 @@ async function refreshCaptcha() {
   }
 }
 
+/** 校验验证码换动态 path，提交抢购后开始轮询结果。 */
 async function submit() {
   if (!auth.isLoggedIn) {
     setFlash('info', '请先登录后再参与抢购')
@@ -105,7 +110,7 @@ async function submit() {
   queueKind.value = 'info'
   queueState.value = '正在校验验证码并提交抢购…'
   try {
-    const path = await seckillApi.path(goodsId, captchaAnswer.value)
+    const path = await seckillApi.path(goodsId, captchaAnswer.value.trim())
     await seckillApi.submit(path, goodsId)
     queueKind.value = 'info'
     queueState.value = '请求已进入队列，正在确认订单…'
@@ -118,6 +123,7 @@ async function submit() {
   }
 }
 
+/** 每秒轮询一次秒杀结果，最多约 30 次；`0` 继续等，`-1` 失败，其它为订单号。 */
 function pollResult(attempt: number) {
   window.clearTimeout(pollTimer)
   pollTimer = window.setTimeout(async () => {
