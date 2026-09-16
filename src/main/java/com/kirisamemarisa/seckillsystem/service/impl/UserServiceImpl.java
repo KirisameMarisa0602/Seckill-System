@@ -18,6 +18,10 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
 
+/**
+ * {@link IUserService} 实现。读写表 {@code t_user}。
+ * 主键是手机号（{@code IdType.INPUT}），不是自增。
+ */
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
     @Autowired private UserMapper userMapper;
@@ -37,6 +41,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setLastLoginDate(LocalDateTime.now());
         userMapper.updateById(user);
         String token = UUID.randomUUID().toString().replace("-", "");
+        // Redis 只放脱敏副本，避免 token 被盗后直接拿到 password/salt
         User safeUser = new User();
         safeUser.setId(user.getId());
         safeUser.setNickname(user.getNickname());
@@ -61,6 +66,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return RespBean.success("注册成功");
     }
 
+    /**
+     * 校验密码并在命中旧 MD5 时升级为 BCrypt、清空 salt。
+     *
+     * <p>BCrypt 哈希以 {@code $2} 开头。旧账号同时认「前端已 MD5 的 formPass」和「明文再套静态盐」两种写法，
+     * 避免升级窗口里有人用新前端、有人用旧前端登不进去。{@code salt.length() < 6} 是因为 MD5 混盐要用 charAt(0/2/5/4)。
+     */
     private boolean passwordMatchesAndUpgrade(User user, String submittedPassword) {
         String stored = user.getPassword();
         if (stored != null && stored.startsWith("$2")) {

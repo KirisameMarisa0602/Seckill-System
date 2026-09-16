@@ -1,4 +1,15 @@
 <script setup lang="ts">
+/**
+ * 秒杀会场首页：分页展示商品卡片，按时间窗与库存计算场次状态。
+ *
+ * 后端接口：
+ * - GET /goods/list — goodsApi.list
+ *
+ * 关键函数：
+ * - parseTime：把后端 "yyyy-MM-dd HH:mm:ss" 转成时间戳
+ * - stateOf：即将开始 / 抢购中 / 已售罄 / 已结束
+ * - loadGoods / changePage：拉取当前页并在翻页时滚回顶部
+ */
 import { onMounted, ref } from 'vue'
 import { ArrowRight, Clock, Goods as GoodsIcon } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'

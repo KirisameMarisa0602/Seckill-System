@@ -14,10 +14,21 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.PrintWriter;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 管理员接口鉴权拦截器，校验请求头 {@code Admin-Token} 是否仍存在于 Redis。
+ *
+ * <p>命中则滑动续期，与登录会话 TTL 对齐。由 {@link WebConfig} 挂到 {@code /admin/**}（排除登录）。
+ * 依赖中间件：Redis。无 {@code @Order}。
+ */
 @Component
 public class AdminInterceptor implements HandlerInterceptor {
     @Autowired private RedisTemplate<String, Object> redisTemplate;
 
+    /**
+     * 校验 Admin-Token：缺失或 Redis 中已失效则直接写 401 JSON 并中断链路。
+     *
+     * @return {@code true} 表示管理员会话有效，继续进入 Controller
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         String adminToken = request.getHeader("Admin-Token");

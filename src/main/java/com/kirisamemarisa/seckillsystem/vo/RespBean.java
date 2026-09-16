@@ -4,6 +4,10 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * 统一 HTTP JSON 外壳：{@code code}/{@code message}/{@code obj}。
+ * 成功用 {@link #success()}；失败把 {@link RespBeanEnum} 的码和文案填进去。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

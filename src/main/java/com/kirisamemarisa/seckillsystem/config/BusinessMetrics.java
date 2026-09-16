@@ -17,6 +17,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 业务 Gauge：Outbox 积压、待退款笔数、Redis/MySQL 秒杀库存不一致数。
+ *
+ * <p>供 Prometheus {@code /actuator/prometheus} 采集，不参与交易路径。
+ * 默认 30s 刷新；库存不一致且 Outbox 为空时打 warn，提示可能需要人工对账。
+ * 依赖中间件：Redis、MySQL、Micrometer。无 {@code @Order}，{@code @PostConstruct} 注册表盘。
+ */
 @Slf4j
 @Component
 public class BusinessMetrics {
@@ -29,6 +36,9 @@ public class BusinessMetrics {
     private final AtomicLong refundPending = new AtomicLong();
     private final AtomicLong inventoryMismatch = new AtomicLong();
 
+    /**
+     * 把三个 AtomicLong 注册为 Gauge，采集端读到的是刷新后的快照值。
+     */
     @PostConstruct
     public void register() {
         meterRegistry.gauge("seckill.outbox.pending", outboxPending);
@@ -36,6 +46,9 @@ public class BusinessMetrics {
         meterRegistry.gauge("seckill.inventory.mismatch", inventoryMismatch);
     }
 
+    /**
+     * 定时从 Redis ZSET、支付表、商品列表重算 Gauge。
+     */
     @Scheduled(fixedDelayString = "${seckill.metrics.refresh-interval-ms:30000}")
     public void refresh() {
         Long outboxSize = stringRedisTemplate.opsForZSet().zCard(SeckillKey.outboxPending.getPrefix());

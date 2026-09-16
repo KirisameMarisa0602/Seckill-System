@@ -10,11 +10,20 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 超时未支付订单的数据库兜底扫描。与 RabbitMQ 死信关单互补：
+ * 消息丢失时仍能把 {@code t_order.status=0} 且创建超过 15 分钟的单据关掉。
+ * 真正改状态、回库存走 {@link IOrderService#cancelTimeoutOrder}。
+ */
 @Slf4j
 @Component
 public class TimeoutOrderScanner {
     @Autowired private IOrderService orderService;
 
+    /**
+     * 默认每 60 秒扫一批。{@code last("LIMIT 100")} 拼在 MP SQL 末尾，避免一次锁太多行。
+     * 单笔失败只打日志，不中断本轮剩余订单。
+     */
     @Scheduled(fixedDelayString = "${seckill.order-timeout.scan-interval-ms:60000}")
     public void closeExpiredOrders() {
         LocalDateTime deadline = LocalDateTime.now().minusMinutes(15);

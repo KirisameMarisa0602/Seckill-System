@@ -22,6 +22,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 验证秒杀队列消费幂等契约：重复投递发现库中已有订单时 ACK，且不再创建订单。
+ */
 @ExtendWith(MockitoExtension.class)
 class MQReceiverTest {
     @Mock private IOrderService orderService;
@@ -31,6 +34,9 @@ class MQReceiverTest {
     @Mock private Channel channel;
     @InjectMocks private MQReceiver receiver;
 
+    /**
+     * 已存在秒杀订单时：回写订单缓存、ACK 消息、不调用 {@code createSeckillOrder}。
+     */
     @Test
     void duplicateDeliveryUsesDatabaseOrderAndAcknowledges() throws Exception {
         SeckillOrder existing = new SeckillOrder();

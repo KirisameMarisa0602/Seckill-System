@@ -2,28 +2,38 @@ package com.kirisamemarisa.seckillsystem.utils;
 
 import org.apache.commons.codec.digest.DigestUtils;
 
+/**
+ * 旧账号 MD5 密码工具。新注册一律 BCrypt；本类只给登录升级路径比对历史哈希。
+ *
+ * <p>两层哈希：先用类内静态盐把明文打成 formPass，再用用户随机盐打成 DBPass。
+ * {@link #formPassToDBPass} 认「前端已做过第一层」的提交；{@link #inputPassToDBPass} 认纯明文。
+ */
 public class MD5Util {
-    //调用 apache 底层的加密工具，扔进去一块原石（字符串），吐出一长串乱码（MD5哈希值）
+    /** Apache Commons Codec 的 MD5 十六进制摘要。 */
     public static String md5(String src) {
         return DigestUtils.md5Hex(src);
     }
 
-    //静态盐
+    /** 旧前端固定盐，与用户表里的随机 salt 不是一回事。 */
     private static final String salt = "1a2b3c4d";
 
-    //用户的明文密码（inputPass） 转换成 表单提交密码（formPass）
+    /**
+     * 明文 → 表单密码。取静态盐的第 1、3、6、5 个字符夹在密码两侧再 MD5。
+     */
     public static String inputPassToFormPass(String inputPass) {
         String str = "" + salt.charAt(0) + salt.charAt(2) + inputPass + salt.charAt(5) + salt.charAt(4);
         return md5(str);
     }
 
-    //表单提交的密码（formPass） 转换成 数据库最终存储的密码（DBPass）
+    /**
+     * 表单密码 → 库内哈希。同样用随机盐的 charAt(0/2/5/4) 混入，所以随机盐长度必须 ≥ 6。
+     */
     public static String formPassToDBPass(String formPass, String randomSalt) {
         String str = "" + randomSalt.charAt(0) + randomSalt.charAt(2) + formPass + randomSalt.charAt(5) + randomSalt.charAt(4);
         return md5(str);
     }
 
-    //把前面两步（穿两件防弹衣）合并成了一步的“全自动加密流水线”
+    /** 明文直接走到库内哈希，等于上面两步连起来。 */
     public static String inputPassToDBPass(String inputPass, String randomSalt) {
         String formPass = inputPassToFormPass(inputPass);
         return formPassToDBPass(formPass, randomSalt);

@@ -28,6 +28,10 @@ import java.time.LocalDateTime;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * {@link IGoodsService} 实现。主表 {@code t_goods}，秒杀场次 {@code t_seckill_goods}。
+ * 详情走「布隆 + Redis + 互斥锁回源」；写操作在事务提交后再改缓存。
+ */
 @Service
 @Slf4j
 public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements IGoodsService {
@@ -45,6 +49,10 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
     @Autowired @Qualifier("doubleDeleteExecutor") private Executor doubleDeleteExecutor;
 
+    /**
+     * 启动后常驻消费 Redisson 延迟队列：更新商品后 500ms 再删一次详情缓存，减轻「先删缓存再被旧值打回」的窗口。
+     * {@code take()} 阻塞当前线程，所以丢到独立线程池，避免卡住 Spring 启动。
+     */
     @PostConstruct
     public void initDoubleDeleteListener() {
         doubleDeleteExecutor.execute(() -> {
@@ -72,10 +80,12 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
     public GoodsVo findGoodsVoByGoodsId(Long goodsId) {
         String cacheKey = GoodsKey.getGoodsVo.getPrefix() + goodsId;
         RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+        // 布隆说不存在则一定不在集合里，直接返回，避免缓存/DB 被乱 ID 打穿
         if (bloomFilter.isExists() && !bloomFilter.contains(goodsId)) { return null; }
         Object cachedObj = redisTemplate.opsForValue().get(cacheKey);
         if (cachedObj != null) {
             GoodsVo goodsVo = (GoodsVo) cachedObj;
+            // id=-1 是故意写入的空对象，表示「查过 DB 没有」，TTL 1 分钟
             return (goodsVo.getId() != null && goodsVo.getId().equals(-1L)) ? null : goodsVo;
         }
         RLock lock = redissonClient.getLock("seckill:goodsVo:lock:" + goodsId);
@@ -84,6 +94,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
             try {
                 if (lock.tryLock(3, 10, TimeUnit.SECONDS)) {
                     try {
+                        // 拿到锁后再读一次，可能已被先行线程回填
                         cachedObj = redisTemplate.opsForValue().get(cacheKey);
                         if (cachedObj != null) {
                             GoodsVo goodsVo = (GoodsVo) cachedObj;
@@ -210,6 +221,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         boolean activityRunning = current.getStartDate() != null && current.getEndDate() != null
                 && !LocalDateTime.now().isBefore(current.getStartDate())
                 && !LocalDateTime.now().isAfter(current.getEndDate());
+        // 进行中直接覆盖库存会和 Redis 预扣、待支付单对不上
         if (inventoryChanged && (activityRunning || countPendingOrders(goodsId) > 0)) {
             return businessError("活动进行中或仍有待支付订单，禁止直接覆盖库存");
         }
@@ -253,12 +265,14 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return RespBean.success("商品信息与缓存状态热同步完毕！已投递容灾级延迟双删队列。");
     }
 
+    /** 待支付单数量。status=0 表示还占着秒杀库存预扣，不能下架或覆盖库存。 */
     private long countPendingOrders(Long goodsId) {
         return orderInfoMapper.selectCount(new QueryWrapper<OrderInfo>()
                 .eq("goods_id", goodsId)
                 .eq("status", 0));
     }
 
+    /** 秒杀库存不能大于普通库存，秒杀价不能高于原价；违规返回 BIND_ERROR。 */
     private RespBean validateInventoryAndPrice(Integer goodsStock, Integer seckillStock,
                                                java.math.BigDecimal goodsPrice,
                                                java.math.BigDecimal seckillPrice) {
@@ -271,12 +285,17 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return null;
     }
 
+    /** 复用 BIND_ERROR 的 code，只改 message 给前端展示具体原因。 */
     private RespBean businessError(String message) {
         RespBean response = RespBean.error(RespBeanEnum.BIND_ERROR);
         response.setMessage(message);
         return response;
     }
 
+    /**
+     * 事务提交后再跑缓存同步。回滚时不会执行；无事务时（例如单测直接调）立刻跑。
+     * 缓存失败只打日志，DB 已提交，靠预热/对账恢复。
+     */
     private void afterCommit(Runnable action) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             action.run();

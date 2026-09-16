@@ -22,6 +22,13 @@ import java.util.Collections;
 import java.util.Arrays;
 import java.io.PrintWriter;
 
+/**
+ * 全站拦截器：解析登录用户、IP 黑名单、{@link AccessLimit} 限流。
+ *
+ * <p>必须在 Controller 参数解析之前写入 {@link UserContext}，并在请求结束时清理。
+ * 限流走 Redis Lua，避免并发下窗口计数不准确。
+ * 依赖中间件：Redis。由 {@link WebConfig} 注册，无 {@code @Order}。
+ */
 @Component
 public class AccessLimitInterceptor implements HandlerInterceptor {
     @Autowired private RedisTemplate<String, Object> redisTemplate;
@@ -39,6 +46,11 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
         return (User) redisTemplate.opsForValue().get(UserKey.token.getPrefix() + token);
     }
 
+    /**
+     * 解析用户、检查黑名单、按注解执行 Redis 限流；未标注 {@link AccessLimit} 的接口仍会写入用户上下文。
+     *
+     * @return {@code false} 时已写入错误 JSON（401/429），不再进入 Controller
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         try {
@@ -54,6 +66,8 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 String key = request.getRequestURI();
                 String ip = request.getRemoteAddr();
                 String xff = request.getHeader("X-Forwarded-For");
+                // 只在直连对端是受信反代时才采信 XFF，防止客户端伪造头绕过按 IP 限流。
+                // 默认受信 127.0.0.1/::1，对应本机 Nginx；多级代理取 XFF 最左侧（原始客户端）。
                 if (isTrustedProxy(ip) && StringUtils.hasText(xff)
                         && !"unknown".equalsIgnoreCase(xff)) {
                     ip = xff.split(",")[0].trim();
@@ -101,6 +115,9 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 .anyMatch(remoteAddress::equals);
     }
 
+    /**
+     * 无论成功失败都清 ThreadLocal，避免工作线程串号。
+     */
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserContext.remove();

@@ -7,11 +7,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+/**
+ * 启动期表约束自检，{@code @Order(0)}，早于引导管理员与缓存预热。
+ *
+ * <p>秒杀「一人一单」和支付「按交易号入账」都依赖唯一索引；缺索引时宁可拒绝启动，
+ * 也不要在高并发下写出重复订单/重复入账。依赖中间件：MySQL（{@code information_schema}）。
+ */
 @Component
 @Order(0)
 public class SchemaSafetyVerifier implements ApplicationRunner {
     @Autowired private JdbcTemplate jdbcTemplate;
 
+    /**
+     * 校验秒杀订单联合唯一索引与支付流水交易号唯一索引，缺失则抛出 {@link IllegalStateException} 阻断启动。
+     */
     @Override
     public void run(ApplicationArguments args) {
         requireUniqueColumns("t_seckill_order", "user_id,goods_id",

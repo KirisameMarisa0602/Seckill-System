@@ -6,6 +6,9 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * 后台用户列表摘要。从 {@link User} 拷贝公开字段，去掉 password/salt。
+ */
 @Data
 @AllArgsConstructor
 public class UserSummaryVo {
@@ -15,6 +18,7 @@ public class UserSummaryVo {
     private LocalDateTime registerDate;
     private LocalDateTime lastLoginDate;
 
+    /** 实体转摘要；调用方保证 {@code user} 非空。 */
     public static UserSummaryVo from(User user) {
         return new UserSummaryVo(
                 user.getId(),

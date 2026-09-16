@@ -1,3 +1,10 @@
+/**
+ * 全局设计 token 与布局骨架。
+ *
+ * `:root` 定义色板、阴影等 CSS 变量；后续规则只负责顶栏/页脚、页面容器、
+ * 登录卡片、价格与路由过渡，以及 Element Plus 主色覆盖。
+ * 各业务页的视觉细节写在对应 View 的 scoped 样式中，避免把页面规则堆进本文件。
+ */
 :root {
   font-family:
     Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,

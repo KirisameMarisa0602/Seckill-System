@@ -20,6 +20,13 @@ import org.springframework.core.annotation.Order;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 启动期只读缓存预热，{@code @Order(20)}：表约束与引导管理员完成后再跑，避免空库或未建索引时写 Redis。
+ *
+ * <p>商品 VO、布隆过滤器、Redisson 限流器可覆盖刷新；可售库存只用 {@code SETNX}，
+ * 防止滚动发布覆盖正在扣减的 Redis 库存。库存大于 0 时广播 {@code stock_replenish_channel} 解封各节点本地售罄标记。
+ * 依赖中间件：MySQL、Redis、Redisson。
+ */
 @Slf4j
 @Component
 @Order(20)
@@ -34,6 +41,9 @@ public class CacheWarmUpRunner implements ApplicationRunner {
 
     @Autowired private LocalCacheManager cacheManager;
 
+    /**
+     * 分页扫描秒杀商品：填布隆、写 VO 缓存、条件初始化库存、设置全局限流器。
+     */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         log.info("正在安全预热秒杀只读缓存；不会覆盖运行中的 Redis 可售库存");

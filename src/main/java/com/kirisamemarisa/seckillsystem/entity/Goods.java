@@ -10,6 +10,9 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+/**
+ * 普通商品，对应表 {@code t_goods}。秒杀价/秒杀库存/时间窗口在 {@link SeckillGoods}，不在本表。
+ */
 //自动生成所有属性的 get/set 方法，以及 toString()、equals()、hashCode()
 @Data
 //无参构造函数
@@ -35,5 +38,6 @@ public class Goods implements Serializable {
     private String goodsImg;
     private String goodsDetail;
     private BigDecimal goodsPrice;
+    /** 主库存。秒杀预扣的是 {@code t_seckill_goods.stock_count}，本字段在支付成功时才减 1。 */
     private Integer goodsStock;
 }

@@ -1,3 +1,14 @@
+/**
+ * 前端路由表与导航守卫。
+ *
+ * 路由 meta：
+ * - title：写入 document.title
+ * - guest：已登录用户禁止进入（登录/注册页）
+ * - requiresAuth：需要用户 Token
+ * - requiresAdmin：需要管理员 Token
+ *
+ * 未知路径重定向到会场；支付成功页同时兼容 `/success` 与 `/payment/success`。
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -60,9 +71,14 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 })
 
+/** 根据 Token 拦截访客页、用户订单页与运营后台。 */
 router.beforeEach((to) => {
   document.title = `${String(to.meta.title || '首页')} · Seckill`
-  if (to.meta.requiresAuth && !localStorage.getItem('seckill-user-token')) {
+  const loggedIn = Boolean(localStorage.getItem('seckill-user-token'))
+  if (to.meta.guest && loggedIn) {
+    return { name: 'home' }
+  }
+  if (to.meta.requiresAuth && !loggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.requiresAdmin && !localStorage.getItem('seckill-admin-token')) {
@@ -71,4 +87,5 @@ router.beforeEach((to) => {
   return true
 })
 
+/** 应用路由实例。 */
 export default router

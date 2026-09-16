@@ -1,3 +1,4 @@
+# 持续集成：所有分支的 push / PR 都跑后端 Maven verify，PR 额外做依赖漏洞审查。
 name: ci
 
 on:
@@ -6,6 +7,7 @@ on:
   pull_request:
 
 jobs:
+  # 编译、测试并上传 JaCoCo 覆盖率报告（失败时也保留 artifact）
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -25,6 +27,7 @@ jobs:
           name: jacoco-report
           path: target/site/jacoco
 
+  # 仅 PR：高危依赖变更直接失败
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

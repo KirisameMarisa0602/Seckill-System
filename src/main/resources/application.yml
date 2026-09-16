@@ -1,6 +1,12 @@
+# Spring Boot 主配置。敏感项一律走环境变量，勿把密钥写入仓库。
+# 变量模板见仓库根目录 `.env.example`。
+
 server:
+  # 服务端口；Docker Compose 默认映射到宿主机 8080
   port: ${SERVER_PORT:8080}
+  # 收到 SIGTERM 后等在途请求结束再退出
   shutdown: graceful
+  # 不信任转发头，真实客户端 IP 由白名单代理另行解析
   forward-headers-strategy: none
 
 spring:
@@ -15,6 +21,7 @@ spring:
       connection-timeout: 3000
       validation-timeout: 1000
 
+  # 启动时执行 classpath:db/migration 下的版本化 SQL
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -42,6 +49,7 @@ spring:
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
     virtual-host: ${RABBITMQ_VHOST:/}
+    # 发布确认 + 强制退回，配合 Outbox 补偿未投递消息
     publisher-confirm-type: correlated
     publisher-returns: true
     template:
@@ -55,12 +63,14 @@ spring:
 
 mybatis-plus:
   global-config:
+    # 雪花 ID 的机房/机器号，多实例部署时需错开
     datacenter-id: ${DATACENTER_ID:1}
     worker-id: ${WORKER_ID:1}
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+# 支付宝沙箱/正式网关。notifyUrl 必须公网可达，returnUrl 指向前端支付结果页。
 alipay:
   gatewayUrl: ${ALIPAY_GATEWAY_URL:https://openapi-sandbox.dl.alipaydev.com/gateway.do}
   appId: ${ALIPAY_APP_ID}
@@ -86,8 +96,11 @@ management:
 
 app:
   security:
+    # 逗号分隔的反向代理 CIDR/IP，用于解析真实客户端地址
     trusted-proxies: "${TRUSTED_PROXIES:127.0.0.1,::1}"
+    # 浏览器 CORS 白名单；留空则不开放跨域
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  # 仅当库中尚无管理员时写入引导账号
   bootstrap-admin:
     username: ${BOOTSTRAP_ADMIN_USERNAME:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}

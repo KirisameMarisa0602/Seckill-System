@@ -1,4 +1,5 @@
 {
+  // 应用源码（src/）的 TypeScript 配置，由根 tsconfig.json 的 references 引用
   "extends": "@vue/tsconfig/tsconfig.dom.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
