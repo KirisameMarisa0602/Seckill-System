@@ -26,9 +26,12 @@ import {
   User,
   Wallet,
 } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { adminApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
+import type { BannerKind } from '../feedback'
 import { useAuthStore } from '../stores/auth'
 import type { Goods, GoodsForm, PaymentRecord, UserSummary } from '../types'
 
@@ -52,6 +55,13 @@ const goodsPage = ref(1)
 const usersPage = ref(1)
 const refundsPage = ref(1)
 const pageSize = 20
+const notice = ref('')
+const noticeKind = ref<BannerKind>('info')
+
+function showNotice(kind: BannerKind, text: string) {
+  noticeKind.value = kind
+  notice.value = text
+}
 
 function formatDate(date: Date) {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -109,7 +119,7 @@ async function loadAll() {
   try {
     await Promise.all([loadGoods(), loadUsers(), loadRefunds()])
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '控制台数据加载失败')
+    showNotice('error', errorMessage(error, '控制台数据加载失败'))
   } finally {
     loading.value = false
   }
@@ -140,17 +150,22 @@ function openEdit(item: Goods) {
 }
 
 async function saveGoods() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    showNotice('error', '请完整填写商品名称、价格、库存与秒杀时间')
+    return
+  }
   if (form.seckillStock > form.goodsStock) {
-    ElMessage.warning('秒杀库存不能大于普通库存')
+    showNotice('warning', '秒杀库存不能大于普通库存')
     return
   }
   if (form.seckillPrice > form.goodsPrice) {
-    ElMessage.warning('秒杀价格不能高于商品原价')
+    showNotice('warning', '秒杀价格不能高于商品原价')
     return
   }
   if (new Date(form.endDate.replace(' ', 'T')) <= new Date(form.startDate.replace(' ', 'T'))) {
-    ElMessage.warning('结束时间必须晚于开始时间')
+    showNotice('warning', '结束时间必须晚于开始时间')
     return
   }
   saving.value = true
@@ -158,11 +173,11 @@ async function saveGoods() {
     const message = editing.value
       ? await adminApi.updateGoods(form)
       : await adminApi.addGoods(form)
-    ElMessage.success(message)
+    showNotice('success', message || (editing.value ? '商品已更新' : '商品已创建'))
     dialogVisible.value = false
     await loadGoods()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '商品保存失败')
+    showNotice('error', errorMessage(error, '商品保存失败'))
   } finally {
     saving.value = false
   }
@@ -176,11 +191,11 @@ async function removeGoods(item: Goods) {
       { type: 'warning', confirmButtonText: '确认下架', cancelButtonText: '取消' },
     )
     const message = await adminApi.deleteGoods(item.id)
-    ElMessage.success(message)
+    showNotice('success', message || '商品已下架')
     await loadGoods()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error instanceof Error ? error.message : '下架失败')
+      showNotice('error', errorMessage(error, '下架失败'))
     }
   }
 }
@@ -188,9 +203,9 @@ async function removeGoods(item: Goods) {
 async function warmup() {
   warming.value = true
   try {
-    ElMessage.success(await adminApi.warmup())
+    showNotice('success', (await adminApi.warmup()) || '缓存预热完成')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '缓存预热失败')
+    showNotice('error', errorMessage(error, '缓存预热失败'))
   } finally {
     warming.value = false
   }
@@ -256,6 +271,8 @@ onMounted(loadAll)
           </el-button>
         </div>
       </div>
+
+      <StatusBanner v-if="notice" :kind="noticeKind" :text="notice" closable @close="notice = ''" />
 
       <template v-if="activeTab === 'overview'">
         <div class="metric-grid">

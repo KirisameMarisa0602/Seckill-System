@@ -17,9 +17,12 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Back, Goods as GoodsIcon, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { goodsApi, seckillApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
+import type { BannerKind } from '../feedback'
+import { setFlash } from '../feedback'
 import { useAuthStore } from '../stores/auth'
 import type { Goods } from '../types'
 
@@ -32,7 +35,10 @@ const loading = ref(true)
 const captchaUrl = ref('')
 const captchaAnswer = ref('')
 const submitting = ref(false)
+const loadError = ref('')
+const captchaError = ref('')
 const queueState = ref('')
+const queueKind = ref<BannerKind>('info')
 const now = ref(Date.now())
 let clockTimer: number | undefined
 let pollTimer: number | undefined
@@ -55,17 +61,14 @@ const actionLabel = computed(() => {
   return '验证并提交抢购'
 })
 
-const canSubmit = computed(
-  () => auth.isLoggedIn && phase.value === 'active' && Boolean(captchaAnswer.value),
-)
-
 async function loadGoods() {
+  loadError.value = ''
   try {
     goods.value = await goodsApi.detail(goodsId)
     if (!goods.value) throw new Error('商品不存在')
     if (auth.isLoggedIn && phase.value === 'active') await refreshCaptcha()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '商品加载失败')
+    loadError.value = errorMessage(error, '商品加载失败')
   } finally {
     loading.value = false
   }
@@ -74,27 +77,42 @@ async function loadGoods() {
 async function refreshCaptcha() {
   if (captchaUrl.value) URL.revokeObjectURL(captchaUrl.value)
   captchaAnswer.value = ''
+  captchaError.value = ''
   try {
     captchaUrl.value = await seckillApi.captcha(goodsId)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '验证码获取失败')
+    captchaError.value = errorMessage(error, '验证码获取失败')
   }
 }
 
 async function submit() {
   if (!auth.isLoggedIn) {
+    setFlash('info', '请先登录后再参与抢购')
     router.push({ name: 'login', query: { redirect: route.fullPath } })
     return
   }
-  if (!canSubmit.value) return
+  if (phase.value !== 'active') {
+    queueKind.value = 'warning'
+    queueState.value = actionLabel.value
+    return
+  }
+  if (!captchaAnswer.value.trim()) {
+    queueKind.value = 'warning'
+    queueState.value = '请先填写验证码计算结果'
+    return
+  }
   submitting.value = true
+  queueKind.value = 'info'
+  queueState.value = '正在校验验证码并提交抢购…'
   try {
     const path = await seckillApi.path(goodsId, captchaAnswer.value)
     await seckillApi.submit(path, goodsId)
+    queueKind.value = 'info'
     queueState.value = '请求已进入队列，正在确认订单…'
     pollResult(0)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '抢购提交失败')
+    queueKind.value = 'error'
+    queueState.value = errorMessage(error, '抢购提交失败')
     await refreshCaptcha()
     submitting.value = false
   }
@@ -106,26 +124,29 @@ function pollResult(attempt: number) {
     try {
       const result = await seckillApi.result(goodsId)
       if (String(result) === '-1') {
+        queueKind.value = 'error'
         queueState.value = '库存不足，本轮未抢到'
-        ElMessage.warning(queueState.value)
         submitting.value = false
         return
       }
       if (String(result) !== '0') {
-        queueState.value = `订单创建成功：${result}`
-        ElMessage.success('抢购成功，请尽快支付')
+        queueKind.value = 'success'
+        queueState.value = `抢购成功，订单号 ${result}，请在 15 分钟内完成支付`
         submitting.value = false
+        setFlash('success', '抢购成功，请尽快支付')
         router.push('/orders')
         return
       }
       if (attempt >= 30) {
+        queueKind.value = 'warning'
         queueState.value = '仍在排队处理中，请稍后前往订单页查看'
         submitting.value = false
         return
       }
       pollResult(attempt + 1)
     } catch (error) {
-      queueState.value = error instanceof Error ? error.message : '结果查询失败'
+      queueKind.value = 'error'
+      queueState.value = errorMessage(error, '结果查询失败')
       submitting.value = false
     }
   }, 1000)
@@ -205,14 +226,14 @@ onBeforeUnmount(() => {
           />
           <el-button :icon="Refresh" size="large" @click="refreshCaptcha">刷新</el-button>
         </div>
+        <StatusBanner v-if="captchaError" kind="error" :text="captchaError" />
 
-        <el-alert v-if="queueState" :title="queueState" type="info" :closable="false" show-icon />
+        <StatusBanner v-if="queueState" :kind="queueKind" :text="queueState" />
 
         <el-button
           class="seckill-button"
           size="large"
           type="primary"
-          :disabled="auth.isLoggedIn && !canSubmit"
           :loading="submitting"
           @click="submit"
         >
@@ -221,7 +242,9 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <div v-else class="surface empty-panel">商品不存在或已下架</div>
+    <div v-else class="surface empty-panel">
+      {{ loadError || '商品不存在或已下架' }}
+    </div>
   </div>
 </template>
 

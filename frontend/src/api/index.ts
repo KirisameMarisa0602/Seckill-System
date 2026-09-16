@@ -6,6 +6,7 @@
  * 验证码与支付页是 Blob/HTML，不走该解包。
  */
 import axios, { type AxiosRequestConfig } from 'axios'
+import { ApiError, toApiError } from './errors'
 import type {
   ApiResponse,
   Goods,
@@ -31,14 +32,32 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-/** 解包 `RespBean`：成功返回 `obj`，失败抛出带后端 message 的 Error。 */
+/** 解包 `RespBean`：成功返回 `obj`，失败抛出带后端 code/message 的 {@link ApiError}。 */
 async function request<T>(config: AxiosRequestConfig): Promise<T> {
-  const response = await api.request<ApiResponse<T>>(config)
-  const payload = response.data
-  if (payload.code !== 200) {
-    throw new Error(payload.message || '请求失败')
+  try {
+    const response = await api.request<ApiResponse<T>>(config)
+    const payload = response.data
+    if (!payload || typeof payload !== 'object') {
+      throw new ApiError('服务器返回了无法解析的响应', 500)
+    }
+    if (payload.code !== 200) {
+      throw new ApiError(payload.message || '请求失败', payload.code)
+    }
+    return payload.obj
+  } catch (error) {
+    throw toApiError(error, '请求失败')
   }
-  return payload.obj
+}
+
+async function parseBlobError(data: Blob, fallback: string) {
+  const text = await data.text()
+  try {
+    const payload = JSON.parse(text) as ApiResponse
+    throw new ApiError(payload.message || fallback, payload.code || 500)
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(text || fallback, 500)
+  }
 }
 
 /** 用户登录 / 注册。登录成功返回 Token 字符串。 */
@@ -64,11 +83,19 @@ export const goodsApi = {
 export const seckillApi = {
   /** 拉取算术验证码图，返回可给 `<img>` 使用的 Object URL。 */
   captcha: async (goodsId: number) => {
-    const response = await api.get<Blob>('/seckill/captcha', {
-      params: { goodsId },
-      responseType: 'blob',
-    })
-    return URL.createObjectURL(response.data)
+    try {
+      const response = await api.get<Blob>('/seckill/captcha', {
+        params: { goodsId },
+        responseType: 'blob',
+        validateStatus: () => true,
+      })
+      const data = response.data
+      const asJson = data.type?.includes('json') || response.status >= 400
+      if (asJson) await parseBlobError(data, '验证码获取失败')
+      return URL.createObjectURL(data)
+    } catch (error) {
+      throw toApiError(error, '验证码获取失败')
+    }
   },
   /** 校验验证码并换取一次性秒杀 path。 */
   path: (goodsId: number, captcha: string) =>
@@ -89,8 +116,25 @@ export const orderApi = {
   detail: (orderId: string) => request<Order>({ url: `/order/detail/${orderId}` }),
   /** 返回收银台 HTML 原文，由订单页写入新窗口。 */
   paymentPage: async (orderId: string) => {
-    const response = await api.get<string>(`/pay/create/${orderId}`, { responseType: 'text' })
-    return response.data
+    try {
+      const response = await api.get<string>(`/pay/create/${orderId}`, {
+        responseType: 'text',
+        validateStatus: () => true,
+      })
+      const body = response.data
+      if (response.status >= 400 || body.trim().startsWith('{')) {
+        try {
+          const payload = JSON.parse(body) as ApiResponse
+          throw new ApiError(payload.message || '无法打开支付页', payload.code || response.status)
+        } catch (error) {
+          if (error instanceof ApiError) throw error
+          if (response.status >= 400) throw new ApiError('无法打开支付页', response.status)
+        }
+      }
+      return body
+    } catch (error) {
+      throw toApiError(error, '无法打开支付页')
+    }
   },
 }
 

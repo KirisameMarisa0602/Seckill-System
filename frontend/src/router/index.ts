@@ -76,6 +76,10 @@ router.beforeEach((to) => {
   document.title = `${String(to.meta.title || '首页')} · Seckill`
   const loggedIn = Boolean(localStorage.getItem('seckill-user-token'))
   if (to.meta.guest && loggedIn) {
+    const redirect = to.query.redirect
+    if (typeof redirect === 'string' && redirect.startsWith('/')) {
+      return redirect
+    }
     return { name: 'home' }
   }
   if (to.meta.requiresAuth && !loggedIn) {

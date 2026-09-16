@@ -12,8 +12,9 @@
  */
 import { onMounted, ref } from 'vue'
 import { RefreshRight, Wallet } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { orderApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
 import type { Order } from '../types'
 
 const loading = ref(true)
@@ -22,6 +23,8 @@ const orders = ref<Order[]>([])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
+const pageError = ref('')
+const payHint = ref('')
 
 const statusMap: Record<number, { label: string; type: 'warning' | 'success' | 'info' | 'danger' }> = {
   0: { label: '待支付', type: 'warning' },
@@ -32,29 +35,33 @@ const statusMap: Record<number, { label: string; type: 'warning' | 'success' | '
 
 async function loadOrders() {
   loading.value = true
+  pageError.value = ''
   try {
     const result = await orderApi.list(page.value, pageSize)
     orders.value = result.records
     total.value = result.total
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '订单加载失败')
+    orders.value = []
+    pageError.value = errorMessage(error, '订单加载失败')
   } finally {
     loading.value = false
   }
 }
 
 async function pay(order: Order) {
+  payHint.value = ''
   const paymentWindow = window.open('', '_blank')
   payingId.value = order.id
   try {
     const html = await orderApi.paymentPage(order.id)
-    if (!paymentWindow) throw new Error('浏览器阻止了支付窗口，请允许弹窗')
+    if (!paymentWindow) throw new Error('浏览器阻止了支付窗口，请允许弹窗后重试')
     paymentWindow.document.open()
     paymentWindow.document.write(html)
     paymentWindow.document.close()
+    payHint.value = '已打开支付窗口，完成付款后请刷新订单状态'
   } catch (error) {
     paymentWindow?.close()
-    ElMessage.error(error instanceof Error ? error.message : '支付页面打开失败')
+    payHint.value = errorMessage(error, '支付页面打开失败')
   } finally {
     payingId.value = ''
   }
@@ -73,6 +80,13 @@ onMounted(loadOrders)
       </div>
       <el-button :icon="RefreshRight" @click="loadOrders">刷新状态</el-button>
     </div>
+
+    <StatusBanner v-if="pageError" kind="error" :text="pageError" />
+    <StatusBanner
+      v-if="payHint"
+      :kind="payHint.includes('已打开') ? 'success' : 'error'"
+      :text="payHint"
+    />
 
     <section class="surface order-list" v-loading="loading">
       <article v-for="order in orders" :key="order.id" class="order-row">

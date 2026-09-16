@@ -9,9 +9,12 @@
  * - submit：校验手机号/密码后登录；已登录用户由路由 guest 守卫拦回首页
  */
 import { reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { type FormInstance, type FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
+import { setFlash } from '../feedback'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
@@ -19,29 +22,41 @@ const route = useRoute()
 const auth = useAuthStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const formError = ref('')
+const formSuccess = ref(
+  route.query.registered === '1' ? '注册成功，请使用新账号登录' : '',
+)
 const form = reactive({ mobile: '', password: '' })
 
 const rules: FormRules = {
   mobile: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' },
+    { required: true, message: '请输入手机号', trigger: ['blur', 'change'] },
+    { pattern: /^1[3-9]\d{9}$/, message: '手机号须为 11 位有效号码', trigger: ['blur', 'change'] },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, max: 72, message: '密码长度为 8 至 72 位', trigger: 'blur' },
+    { required: true, message: '请输入密码', trigger: ['blur', 'change'] },
+    { min: 8, max: 72, message: '密码长度为 8 至 72 位', trigger: ['blur', 'change'] },
   ],
 }
 
 async function submit() {
-  await formRef.value?.validate()
+  formError.value = ''
+  formSuccess.value = ''
+  try {
+    await formRef.value?.validate()
+  } catch {
+    formError.value = '请检查手机号格式（11 位）和密码长度（8 至 72 位）'
+    return
+  }
   submitting.value = true
   try {
     const token = await authApi.login(form.mobile, form.password)
     auth.setUserSession(token, form.mobile)
-    ElMessage.success('登录成功')
-    router.replace(String(route.query.redirect || '/'))
+    formSuccess.value = '登录成功，正在跳转…'
+    setFlash('success', '登录成功')
+    await router.replace(String(route.query.redirect || '/'))
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '登录失败')
+    formError.value = errorMessage(error, '登录失败')
   } finally {
     submitting.value = false
   }
@@ -69,6 +84,8 @@ async function submit() {
             @keyup.enter="submit"
           />
         </el-form-item>
+        <StatusBanner v-if="formSuccess" kind="success" :text="formSuccess" />
+        <StatusBanner v-if="formError" kind="error" :text="formError" />
         <el-button
           class="auth-submit"
           size="large"
