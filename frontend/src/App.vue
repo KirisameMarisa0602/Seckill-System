@@ -6,15 +6,18 @@
  * - activePath：把 `/goods/:id` 归到会场高亮、`/admin*` 归到后台高亮
  * - logout：清用户会话并回到首页（不影响管理员 Token）
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Management, ShoppingBag, Tickets, User } from '@element-plus/icons-vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import StatusBanner from './components/StatusBanner.vue'
+import { takeFlash, type BannerState } from './feedback'
 import { useAuthStore } from './stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const flash = ref<BannerState | null>(null)
 
 const activePath = computed(() => {
   if (route.path.startsWith('/goods')) return '/'
@@ -22,9 +25,18 @@ const activePath = computed(() => {
   return route.path
 })
 
+watch(
+  () => route.fullPath,
+  () => {
+    flash.value = takeFlash()
+  },
+  { immediate: true },
+)
+
 function logout() {
   auth.logoutUser()
-  router.push('/')
+  flash.value = { kind: 'info', text: '已退出登录' }
+  if (route.path !== '/') router.push('/')
 }
 </script>
 
@@ -76,6 +88,15 @@ function logout() {
         </template>
       </div>
     </header>
+
+    <StatusBanner
+      v-if="flash"
+      class="flash-banner"
+      :kind="flash.kind"
+      :text="flash.text"
+      closable
+      @close="flash = null"
+    />
 
     <main>
       <RouterView v-slot="{ Component }">

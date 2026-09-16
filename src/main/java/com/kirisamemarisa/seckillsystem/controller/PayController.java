@@ -24,7 +24,7 @@ import java.util.Map;
  *
  * <p>在秒杀链路中位于订单落库之后：用户在 OrdersView 点击支付，前端 {@code orderApi.paymentPage}
  * 调用 {@code GET /pay/create/{orderId}} 拿到支付宝表单 HTML。异步通知 {@code POST /pay/notify}
- * 由支付宝服务器回调，不走前端。
+ * 由支付宝服务器经 Nginx（公网 {@code /api/pay/notify} 剥前缀）回调，不走前端。
  */
 @Slf4j
 @RestController
@@ -100,6 +100,8 @@ public class PayController {
             String valueStr = String.join(",", values);
             params.put(name, valueStr);
         }
+        log.info("收到支付宝异步通知 path={} trade_status={} out_trade_no={}",
+                request.getRequestURI(), params.get("trade_status"), params.get("out_trade_no"));
 
         try {
             boolean signVerified = AlipaySignature.rsaCheckV1(

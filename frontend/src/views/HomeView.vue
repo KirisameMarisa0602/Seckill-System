@@ -12,9 +12,10 @@
  */
 import { onMounted, ref } from 'vue'
 import { ArrowRight, Clock, Goods as GoodsIcon } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { goodsApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
 import type { Goods } from '../types'
 
 const router = useRouter()
@@ -23,6 +24,7 @@ const goods = ref<Goods[]>([])
 const page = ref(1)
 const pageSize = 12
 const total = ref(0)
+const pageError = ref('')
 
 function parseTime(value: string) {
   return new Date(value.replace(' ', 'T')).getTime()
@@ -38,12 +40,14 @@ function stateOf(item: Goods) {
 
 async function loadGoods() {
   loading.value = true
+  pageError.value = ''
   try {
     const result = await goodsApi.list(page.value, pageSize)
     goods.value = result.records
     total.value = result.total
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '商品加载失败')
+    goods.value = []
+    pageError.value = errorMessage(error, '商品加载失败')
   } finally {
     loading.value = false
   }
@@ -82,6 +86,8 @@ onMounted(loadGoods)
       </div>
       <span class="live-indicator"><i /> 实时更新</span>
     </div>
+
+    <StatusBanner v-if="pageError" kind="error" :text="pageError" />
 
     <div v-if="loading" class="goods-grid">
       <div v-for="index in 6" :key="index" class="goods-card surface skeleton-card">
@@ -134,7 +140,9 @@ onMounted(loadGoods)
       </article>
     </div>
 
-    <div v-else class="surface empty-panel">当前没有可展示的秒杀商品</div>
+    <div v-else class="surface empty-panel">
+      {{ pageError ? '会场暂时无法加载，请刷新页面重试' : '当前没有可展示的秒杀商品' }}
+    </div>
 
     <el-pagination
       v-if="total > pageSize"

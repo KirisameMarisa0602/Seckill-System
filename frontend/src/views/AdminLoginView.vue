@@ -10,31 +10,44 @@
  */
 import { reactive, ref } from 'vue'
 import { Lock } from '@element-plus/icons-vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { adminApi } from '../api'
+import { errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
+import { setFlash } from '../feedback'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const formError = ref('')
+const formSuccess = ref('')
 const form = reactive({ username: '', password: '' })
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入管理员密码', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入管理员账号', trigger: ['blur', 'change'] }],
+  password: [{ required: true, message: '请输入管理员密码', trigger: ['blur', 'change'] }],
 }
 
 async function submit() {
-  await formRef.value?.validate()
+  formError.value = ''
+  formSuccess.value = ''
+  try {
+    await formRef.value?.validate()
+  } catch {
+    formError.value = '请填写管理员账号和密码'
+    return
+  }
   submitting.value = true
   try {
     const token = await adminApi.login(form.username, form.password)
     auth.setAdminSession(token)
-    ElMessage.success('管理员认证成功')
-    router.replace('/admin')
+    formSuccess.value = '认证成功，正在进入控制台…'
+    setFlash('success', '管理员登录成功')
+    await router.replace('/admin')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '管理员登录失败')
+    formError.value = errorMessage(error, '管理员登录失败')
   } finally {
     submitting.value = false
   }
@@ -62,6 +75,8 @@ async function submit() {
             @keyup.enter="submit"
           />
         </el-form-item>
+        <StatusBanner v-if="formSuccess" kind="success" :text="formSuccess" />
+        <StatusBanner v-if="formError" kind="error" :text="formError" />
         <el-button
           class="auth-submit"
           type="primary"

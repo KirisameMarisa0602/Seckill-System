@@ -67,6 +67,76 @@ a {
   flex-direction: column;
 }
 
+.auth-error,
+.auth-success {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-error {
+  color: var(--danger);
+}
+
+.auth-success {
+  color: var(--success);
+}
+
+.status-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.status-banner.success {
+  color: #085d3a;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+}
+
+.status-banner.error {
+  color: #912018;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+}
+
+.status-banner.warning {
+  color: #93370d;
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+}
+
+.status-banner.info {
+  color: #175cd3;
+  background: #eff8ff;
+  border: 1px solid #b2ddff;
+}
+
+.status-banner-close {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.flash-banner {
+  width: min(1180px, calc(100% - 40px));
+  margin: 16px auto 0;
+}
+
+.el-message {
+  z-index: 4000 !important;
+}
+
 .topbar {
   position: sticky;
   z-index: 50;

@@ -9,27 +9,32 @@
  * - submit：校验昵称/手机号/密码与二次确认后注册
  */
 import { reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { authApi } from '../api'
+import { errorCode, errorMessage } from '../api/errors'
+import StatusBanner from '../components/StatusBanner.vue'
+import { setFlash } from '../feedback'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const formError = ref('')
+const alreadyRegistered = ref(false)
 const form = reactive({ nickname: '', mobile: '', password: '', confirmPassword: '' })
 
 const rules: FormRules = {
   nickname: [
-    { required: true, message: '请输入昵称', trigger: 'blur' },
-    { min: 2, max: 20, message: '昵称长度为 2 至 20 位', trigger: 'blur' },
+    { required: true, message: '请输入昵称', trigger: ['blur', 'change'] },
+    { min: 2, max: 20, message: '昵称长度为 2 至 20 位', trigger: ['blur', 'change'] },
   ],
   mobile: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' },
+    { required: true, message: '请输入手机号', trigger: ['blur', 'change'] },
+    { pattern: /^1[3-9]\d{9}$/, message: '手机号须为 11 位有效号码', trigger: ['blur', 'change'] },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, max: 72, message: '密码长度为 8 至 72 位', trigger: 'blur' },
+    { required: true, message: '请输入密码', trigger: ['blur', 'change'] },
+    { min: 8, max: 72, message: '密码长度为 8 至 72 位', trigger: ['blur', 'change'] },
   ],
   confirmPassword: [
     {
@@ -38,20 +43,28 @@ const rules: FormRules = {
         else if (value !== form.password) callback(new Error('两次输入的密码不一致'))
         else callback()
       },
-      trigger: 'blur',
+      trigger: ['blur', 'change'],
     },
   ],
 }
 
 async function submit() {
-  await formRef.value?.validate()
+  formError.value = ''
+  alreadyRegistered.value = false
+  try {
+    await formRef.value?.validate()
+  } catch {
+    formError.value = '请检查昵称、手机号、密码以及两次密码是否一致'
+    return
+  }
   submitting.value = true
   try {
     await authApi.register(form.nickname, form.mobile, form.password)
-    ElMessage.success('注册成功，请登录')
-    router.replace('/login')
+    setFlash('success', '注册成功，请使用新账号登录')
+    await router.replace({ path: '/login', query: { registered: '1' } })
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '注册失败')
+    alreadyRegistered.value = errorCode(error) === 500206
+    formError.value = errorMessage(error, '注册失败')
   } finally {
     submitting.value = false
   }
@@ -84,6 +97,10 @@ async function submit() {
             @keyup.enter="submit"
           />
         </el-form-item>
+        <StatusBanner v-if="formError" kind="error" :text="formError" />
+        <p v-if="alreadyRegistered" class="auth-switch" style="margin: 0 0 12px">
+          <RouterLink to="/login">该手机号已注册，前往登录</RouterLink>
+        </p>
         <el-button
           class="auth-submit"
           size="large"
