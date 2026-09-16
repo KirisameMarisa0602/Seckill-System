@@ -3,10 +3,13 @@ package com.kirisamemarisa.seckillsystem.rabbitmq;
 import com.kirisamemarisa.seckillsystem.config.RabbitMQConfig;
 import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -27,16 +30,54 @@ public class MQSender {
                     returnedMessage.getRoutingKey());
         });
     }
-    public void sendSeckillMessage(SeckillMessage message) {
-        log.info("【收银员操作】接收到秒杀请求，正在投递消息至 MQ: {}", message);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.SECKILL_EXCHANGE, RabbitMQConfig.SEND_ROUTING_KEY, message);
+    public void sendSeckillMessageReliable(SeckillMessage message) throws Exception {
+        sendSeckillMessageReliable(message, 0);
     }
-    public void sendDelayOrderMessage(Long orderId) {
-        log.info("【系统指令】订单[ID:{}]已生成，已投入延迟队列开启15分钟倒计时！", orderId);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_EXCHANGE, RabbitMQConfig.DELAY_ROUTING_KEY, orderId);
+    public void sendSeckillMessageReliable(SeckillMessage message, int retryCount) throws Exception {
+        CorrelationData correlationData = new CorrelationData(UUID.randomUUID().toString());
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.SECKILL_EXCHANGE,
+                RabbitMQConfig.SEND_ROUTING_KEY,
+                message,
+                amqpMessage -> {
+                    amqpMessage.getMessageProperties().setHeader("x-app-retry-count", retryCount);
+                    return amqpMessage;
+                },
+                correlationData
+        );
+        CorrelationData.Confirm confirm = correlationData.getFuture().get(5, TimeUnit.SECONDS);
+        if (!confirm.isAck() || correlationData.getReturned() != null) {
+            throw new IllegalStateException("秒杀消息未可靠路由: " + confirm.getReason());
+        }
     }
-    public void sendCompensateMessage(Long orderId) {
-        log.info("【容错补偿】订单[ID:{}]扣减主库失败，已推入MQ重试补偿队列等待处理！", orderId);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.COMPENSATE_EXCHANGE, RabbitMQConfig.COMPENSATE_ROUTING_KEY, orderId);
+    public void sendDelayOrderMessageReliable(Long orderId) throws Exception {
+        CorrelationData correlationData = new CorrelationData(UUID.randomUUID().toString());
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.DELAY_EXCHANGE,
+                RabbitMQConfig.DELAY_ROUTING_KEY,
+                orderId,
+                correlationData
+        );
+        CorrelationData.Confirm confirm = correlationData.getFuture().get(5, TimeUnit.SECONDS);
+        if (!confirm.isAck() || correlationData.getReturned() != null) {
+            throw new IllegalStateException("延迟关单消息未可靠路由: " + confirm.getReason());
+        }
+    }
+    public void sendCompensateMessageReliable(Long orderId, int retryCount) throws Exception {
+        CorrelationData correlationData = new CorrelationData(UUID.randomUUID().toString());
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.COMPENSATE_EXCHANGE,
+                RabbitMQConfig.COMPENSATE_ROUTING_KEY,
+                orderId,
+                amqpMessage -> {
+                    amqpMessage.getMessageProperties().setHeader("x-app-retry-count", retryCount);
+                    return amqpMessage;
+                },
+                correlationData
+        );
+        CorrelationData.Confirm confirm = correlationData.getFuture().get(5, TimeUnit.SECONDS);
+        if (!confirm.isAck() || correlationData.getReturned() != null) {
+            throw new IllegalStateException("补偿消息未可靠路由: " + confirm.getReason());
+        }
     }
 }

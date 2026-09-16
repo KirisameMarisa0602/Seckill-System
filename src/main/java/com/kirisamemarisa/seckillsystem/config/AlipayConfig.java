@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class AlipayConfig {
     private String gatewayUrl;
     private String appId;
+    private String sellerId;
     private String merchantPrivateKey;
     private String alipayPublicKey;
     private String notifyUrl;

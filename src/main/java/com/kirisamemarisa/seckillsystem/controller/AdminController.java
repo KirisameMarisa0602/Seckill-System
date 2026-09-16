@@ -1,5 +1,9 @@
 package com.kirisamemarisa.seckillsystem.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kirisamemarisa.seckillsystem.entity.PaymentRecord;
+import com.kirisamemarisa.seckillsystem.mapper.PaymentRecordMapper;
 import com.kirisamemarisa.seckillsystem.config.CacheWarmUpRunner;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import com.kirisamemarisa.seckillsystem.service.IAdminService;
@@ -21,6 +25,8 @@ public class AdminController {
 
     @Autowired private CacheWarmUpRunner cacheWarmUpRunner; // 直接挂载执行器
 
+    @Autowired private PaymentRecordMapper paymentRecordMapper;
+
     @AccessLimit(second = 60, maxCount = 5, needLogin = false)
     @PostMapping("/login")
     @ResponseBody
@@ -30,11 +36,32 @@ public class AdminController {
 
     @GetMapping("/user/list")
     @ResponseBody
-    public RespBean getUserList() { return RespBean.success(userService.list()); }
+    public RespBean getUserList(@RequestParam(required = false) Integer page,
+                                @RequestParam(required = false) Integer pageSize) {
+        if (page == null && pageSize == null) {
+            return RespBean.success(userService.list().stream().map(UserSummaryVo::from).toList());
+        }
+        int safePage = Math.max(page == null ? 1 : page, 1);
+        int safePageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 100);
+        var result = userService.page(new Page<>(safePage, safePageSize));
+        return RespBean.success(new PageResult<>(
+                result.getTotal(), safePage, safePageSize,
+                result.getRecords().stream().map(UserSummaryVo::from).toList()));
+    }
 
     @GetMapping("/goods/list")
     @ResponseBody
-    public RespBean getGoodsList() { return RespBean.success(goodsService.findGoodsVo()); }
+    public RespBean getGoodsList(@RequestParam(required = false) Integer page,
+                                 @RequestParam(required = false) Integer pageSize) {
+        if (page == null && pageSize == null) {
+            return RespBean.success(goodsService.findGoodsVo());
+        }
+        int safePage = Math.max(page == null ? 1 : page, 1);
+        int safePageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 100);
+        return RespBean.success(new PageResult<>(
+                goodsService.countSeckillGoods(), safePage, safePageSize,
+                goodsService.findGoodsVoByLimit((safePage - 1) * safePageSize, safePageSize)));
+    }
 
     @PostMapping("/goods/add")
     @ResponseBody
@@ -63,5 +90,20 @@ public class AdminController {
         } catch (Exception e) {
             return RespBean.error(RespBeanEnum.ERROR);
         }
+    }
+
+    @GetMapping("/payment/refund-pending")
+    public RespBean getRefundPending(@RequestParam(defaultValue = "1") int page,
+                                     @RequestParam(defaultValue = "20") int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        Page<PaymentRecord> result = paymentRecordMapper.selectPage(
+                new Page<>(safePage, safePageSize),
+                new QueryWrapper<PaymentRecord>()
+                        .eq("status", "REFUND_PENDING")
+                        .orderByAsc("create_date")
+        );
+        return RespBean.success(new PageResult<>(
+                result.getTotal(), safePage, safePageSize, result.getRecords()));
     }
 }

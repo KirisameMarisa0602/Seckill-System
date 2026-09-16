@@ -3,7 +3,7 @@ package com.kirisamemarisa.seckillsystem.config;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
@@ -29,7 +29,12 @@ public class RedisConfig {
         template.setConnectionFactory(connectionFactory);
         ObjectMapper om = new ObjectMapper();
         om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        om.activateDefaultTyping(LaissezFaireSubTypeValidator.instance, ObjectMapper.DefaultTyping.NON_FINAL);
+        BasicPolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.kirisamemarisa.seckillsystem.")
+                .allowIfSubType("java.math.")
+                .allowIfSubType("java.time.")
+                .build();
+        om.activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.NON_FINAL);
         JavaTimeModule timeModule = new JavaTimeModule();
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         timeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dtf));
@@ -61,6 +66,14 @@ public class RedisConfig {
     public DefaultRedisScript<Long> rateLimitScript() {
         DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
         redisScript.setLocation(new ClassPathResource("scripts/rate-limit.lua"));
+        redisScript.setResultType(Long.class);
+        return redisScript;
+    }
+
+    @Bean
+    public DefaultRedisScript<Long> rollbackSeckillScript() {
+        DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
+        redisScript.setLocation(new ClassPathResource("scripts/rollback-seckill.lua"));
         redisScript.setResultType(Long.class);
         return redisScript;
     }

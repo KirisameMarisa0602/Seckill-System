@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+.env.*
+!.env.example
+!frontend/.env.development
+!frontend/.env.production
