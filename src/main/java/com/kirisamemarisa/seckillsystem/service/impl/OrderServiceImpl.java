@@ -27,6 +27,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * {@link IOrderService} 实现。订单 {@code t_order}、一人一单 {@code t_seckill_order}、支付流水 {@code t_payment_record}。
+ * 秒杀库存下单时预扣；主库存在支付成功时才扣。关单与支付回调靠 {@code FOR UPDATE} 互斥。
+ */
 @Slf4j
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements IOrderService {
@@ -47,6 +51,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Override
     public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) {
         OrderInfo orderInfo = transactionTemplate.execute(status -> {
+            // WHERE stock_count > 0 的条件更新：影响行数 < 1 说明并发下已被抢光
             int updateRows = seckillGoodsMapper.decrementStock(goods.getId());
             if (updateRows < 1) { throw new RuntimeException("库存不足"); }
             OrderInfo info = new OrderInfo();
@@ -64,6 +69,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             seckillOrder.setUserId(userId);
             seckillOrder.setOrderId(info.getId());
             seckillOrder.setGoodsId(goods.getId());
+            // (user_id, goods_id) 唯一索引：重复抢购在这里让整段事务回滚
             seckillOrderMapper.insert(seckillOrder);
             return info;
         });
@@ -87,13 +93,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     public void cancelTimeoutOrder(Long orderId) {
         final OrderInfo[] canceledOrder = new OrderInfo[1];
         Boolean isCanceled = transactionTemplate.execute(status -> {
+            // FOR UPDATE 锁行，与 paySuccess 互斥，避免「一边关单一边入账」
             OrderInfo orderInfo = this.baseMapper.selectByIdForUpdate(orderId);
             if (orderInfo == null || !Integer.valueOf(0).equals(orderInfo.getStatus())) {
                 return false;
             }
             orderInfo.setStatus(-1);
             this.baseMapper.updateById(orderInfo);
+            // 删秒杀订单行，释放一人一单占用，用户可再抢
             seckillOrderMapper.delete(new QueryWrapper<SeckillOrder>().eq("order_id", orderId));
+            // 只回补秒杀预扣库存；主库存支付前尚未扣除
             if(seckillGoodsMapper.selectOne(new QueryWrapper<SeckillGoods>().eq("goods_id", orderInfo.getGoodsId())) != null) {
                 seckillGoodsMapper.incrementStock(orderInfo.getGoodsId());
             }
@@ -115,6 +124,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Transactional(rollbackFor = Exception.class)
     public PaymentResult paySuccess(Long orderId, String tradeNo, BigDecimal amount,
                                     String appId, String sellerId) {
+        // trade_no 唯一：同一笔支付宝通知重放时按已有流水返回，保证幂等
         PaymentRecord existing = paymentRecordMapper.selectOne(
                 new QueryWrapper<PaymentRecord>().eq("trade_no", tradeNo));
         if (existing != null) {
@@ -139,6 +149,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             return PaymentResult.ALREADY_PAID;
         }
 
+        // 非待支付（通常已超时取消）：改 -2 待退款，不能把钱当成有效成交
         if (!Integer.valueOf(0).equals(orderInfo.getStatus())) {
             orderInfo.setStatus(-2);
             this.baseMapper.updateById(orderInfo);
@@ -147,6 +158,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             return PaymentResult.REFUND_PENDING;
         }
 
+        // 主库存在支付成功时才扣；秒杀库存下单时已预扣。主库存没了则待退款
         if (goodsMapper.decrementGoodsStock(orderInfo.getGoodsId()) < 1) {
             orderInfo.setStatus(-2);
             this.baseMapper.updateById(orderInfo);
@@ -163,6 +175,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return PaymentResult.PAID;
     }
 
+    /** 插入支付流水。{@code t_payment_record.trade_no} 唯一，并发双插会让本事务失败回滚。 */
     private void savePaymentRecord(OrderInfo orderInfo, String tradeNo, BigDecimal amount,
                                    String appId, String sellerId, String status) {
         PaymentRecord record = new PaymentRecord();

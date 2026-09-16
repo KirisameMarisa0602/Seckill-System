@@ -22,6 +22,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 验证支付回调契约：待支付订单原子转已支付；已关单则记待退款且不扣主库存。
+ */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
     @Mock private OrderInfoMapper orderInfoMapper;
@@ -34,6 +37,9 @@ class OrderServiceImplTest {
         ReflectionTestUtils.setField(orderService, "baseMapper", orderInfoMapper);
     }
 
+    /**
+     * 待支付订单 {@code paySuccess}：状态变为已支付，并写入支付流水。
+     */
     @Test
     void pendingOrderBecomesPaidAtomically() {
         OrderInfo order = pendingOrder();
@@ -48,6 +54,9 @@ class OrderServiceImplTest {
         verify(paymentRecordMapper).insert(any(PaymentRecord.class));
     }
 
+    /**
+     * 已取消订单迟到支付：标记待退款、不扣主库存，仍落支付流水。
+     */
     @Test
     void canceledOrderCreatesRefundWorkItemWithoutConsumingStock() {
         OrderInfo order = pendingOrder();

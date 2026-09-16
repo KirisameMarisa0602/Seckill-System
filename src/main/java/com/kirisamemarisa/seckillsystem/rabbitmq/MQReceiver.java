@@ -26,6 +26,17 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 秒杀 MQ 消费者：下单落库、错误死信重试/回补、延迟死信关单、主库存补偿。
+ *
+ * <p>队列职责：
+ * <ul>
+ *   <li>{@code seckillQueue}：消费 Outbox 投递的下单消息；Nack 且不重回队列时进入错误死信</li>
+ *   <li>{@code seckill.error.dlq.queue}：最多重投 3 次，仍失败则 Lua 回补 Redis 预留库存</li>
+ *   <li>{@code seckill.dlq.queue}：延迟队列 TTL 到期后的超时关单</li>
+ *   <li>{@code seckill.compensate.queue}：支付成功后扣减商品主库存，失败则重投或人工介入</li>
+ * </ul>
+ */
 @Service
 @Slf4j
 public class MQReceiver {
@@ -43,6 +54,12 @@ public class MQReceiver {
 
     @Autowired private DefaultRedisScript<Long> rollbackSeckillScript;
 
+    /**
+     * 消费秒杀下单队列：幂等查重后落库，并投递延迟关单消息。
+     *
+     * <p>已存在订单或唯一键冲突则 ACK；DB 确认无库存则对齐 Redis 售罄标记后 ACK；
+     * 其它异常 Nack 且不重回队列，转入错误死信交换机。
+     */
     @RabbitListener(queues = RabbitMQConfig.SECKILL_QUEUE)
     public void receive(SeckillMessage seckillMessage, Channel channel, Message message) throws IOException {
         Long userId = seckillMessage.getUserId();
@@ -90,6 +107,9 @@ public class MQReceiver {
         }
     }
 
+    /**
+     * 消费错误死信队列：未达 3 次则重投秒杀交换机，否则回补 Redis 预留库存。
+     */
     @RabbitListener(queues = RabbitMQConfig.ERROR_DEAD_LETTER_QUEUE)
     public void receiveErrorDeadLetter(SeckillMessage seckillMessage, Channel channel,
                                        Message message) throws IOException {
@@ -121,6 +141,9 @@ public class MQReceiver {
         }
     }
 
+    /**
+     * 消费延迟死信队列：支付超时关单（延迟队列 15 分钟 TTL 到期转入）。
+     */
     @RabbitListener(queues = RabbitMQConfig.DEAD_LETTER_QUEUE)
     public void receiveDeadLetter(Long orderId, Channel channel, Message message) throws IOException {
         log.warn("【MQReceiver: 触发死信关单】收到超时未支付倒计时结束的订单ID：{}", orderId);
@@ -133,6 +156,9 @@ public class MQReceiver {
         }
     }
 
+    /**
+     * 消费补偿队列：支付成功后扣减 {@code t_goods} 主库存；失败则带计数重投，满 3 次停止。
+     */
     @RabbitListener(queues = RabbitMQConfig.COMPENSATE_QUEUE)
     public void receiveCompensate(Long orderId, Channel channel, Message message) throws IOException {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
@@ -166,6 +192,7 @@ public class MQReceiver {
         }
     }
 
+    /** 按用户+商品查询已落库的秒杀订单，供幂等消费使用。 */
     private SeckillOrder findExistingOrder(Long userId, Long goodsId) {
         return seckillOrderMapper.selectOne(new QueryWrapper<SeckillOrder>()
                 .eq("user_id", userId)
@@ -173,6 +200,7 @@ public class MQReceiver {
                 .last("LIMIT 1"));
     }
 
+    /** 将已落库订单号写入 {@link OrderKey#seckillOrderCache}，供结果轮询读取。 */
     private void cacheOrder(SeckillOrder order) {
         redisTemplate.opsForValue().set(
                 OrderKey.seckillOrderCache.getPrefix() + order.getUserId() + ":" + order.getGoodsId(),
@@ -182,11 +210,15 @@ public class MQReceiver {
         );
     }
 
+    /** 读取消息头 {@code x-app-retry-count}，缺省为 0。 */
     private int getRetryCount(Message message) {
         Object value = message.getMessageProperties().getHeaders().get("x-app-retry-count");
         return value instanceof Number ? ((Number) value).intValue() : 0;
     }
 
+    /**
+     * 错误死信耗尽重试后，用 Lua 回补 Redis 预留库存并广播本地售罄缓存失效。
+     */
     private void rollbackReservation(Long userId, Long goodsId) {
         Long restored = stringRedisTemplate.execute(
                 rollbackSeckillScript,

@@ -1,4 +1,5 @@
 {
+  // 仅覆盖 Vite 配置文件 vite.config.ts，不参与浏览器端编译
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "target": "es2023",

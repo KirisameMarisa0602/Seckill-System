@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/**
+ * 管理员登录页。成功后写入 Admin-Token，进入运营控制台。
+ *
+ * 后端接口：
+ * - POST /admin/login — adminApi.login
+ *
+ * 关键函数：
+ * - submit：校验账号密码后保存管理员会话
+ */
 import { reactive, ref } from 'vue'
 import { Lock } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'

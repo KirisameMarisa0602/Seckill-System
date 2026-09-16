@@ -1,4 +1,20 @@
 <script setup lang="ts">
+/**
+ * 运营控制台：概览、商品 CRUD、用户列表、待退款工单与 Redis 预热。需管理员 Token。
+ *
+ * 后端接口：
+ * - GET /admin/goods/list — adminApi.goods
+ * - POST /admin/goods/add | /update | /delete/{id} — 增改下架
+ * - GET /admin/user/list — adminApi.users
+ * - GET /admin/payment/refund-pending — adminApi.refunds
+ * - POST /admin/warmup — adminApi.warmup（安全预热，不覆盖运行中库存）
+ *
+ * 关键 computed / 函数：
+ * - totalInventory：当前页秒杀库存合计，仅作对账参考
+ * - openAdd / openEdit / saveGoods / removeGoods：商品弹窗与下架确认
+ * - warmup：触发缓存与布隆过滤器预热
+ * - logout：清管理员会话并回到后台登录
+ */
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   Box,

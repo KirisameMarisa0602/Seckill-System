@@ -1,4 +1,20 @@
 <script setup lang="ts">
+/**
+ * 商品详情与秒杀提交页。未登录可浏览；活动进行中才拉验证码并允许下单。
+ *
+ * 后端接口：
+ * - GET /goods/detail/{id} — goodsApi.detail
+ * - GET /seckill/captcha — seckillApi.captcha（算术验证码 Blob）
+ * - GET /seckill/path — seckillApi.path（校验验证码，换动态 path）
+ * - POST /seckill/{path}/doSeckill — seckillApi.submit
+ * - GET /seckill/result — seckillApi.result（0 排队中，-1 失败，其它为订单号）
+ *
+ * 关键 computed / 函数：
+ * - phase：upcoming / active / soldout / ended
+ * - actionLabel / canSubmit：按钮文案与是否允许提交
+ * - refreshCaptcha：刷新验证码并释放旧 Object URL
+ * - submit：换 path 后入队，再 pollResult 最多约 30 秒
+ */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Back, Goods as GoodsIcon, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'

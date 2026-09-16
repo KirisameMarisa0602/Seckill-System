@@ -29,6 +29,12 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
 import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 
+/**
+ * 秒杀写路径入口，对应前端 {@code seckillApi}（GoodsDetailView：验证码 → 隐藏路径 → 下单 → 轮询结果）。
+ *
+ * <p>链路位置：验证码与路径防刷之后，用 Lua 在 Redis 预扣库存并写入 Outbox；定时任务再投递 RabbitMQ，
+ * 消费者落订单库。本类不直接写订单表。{@code User} 由 token 解析注入。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/seckill")
@@ -49,10 +55,19 @@ public class SeckillController {
 
     @Autowired private LocalCacheManager cacheManager;
 
+    /**
+     * 执行秒杀，对应 {@code POST /seckill/{path}/doSeckill}、{@code seckillApi.submit}。
+     *
+     * @param path    路径变量，须与 Redis 中该用户+商品的一次性秒杀路径一致
+     * @param user    当前登录用户
+     * @param goodsId 秒杀商品 ID（query/form 参数）
+     * @return 成功时 {@code obj=0} 表示已受理、请轮询 {@link #getResult}；失败为库存空/重复/限流等
+     * @implNote Lua 预扣 Redis 库存、写用户已购标记与 Outbox；库存空时写本地空库存缓存。真正订单由 MQ 异步落库
+     */
     @RequestMapping(value = "/{path}/doSeckill", method = RequestMethod.POST)
     @ResponseBody
     @AccessLimit(second = 5, maxCount = 10, needLogin = true)
-    public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) {
+    public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) { // {path} 为一次性隐藏地址，不是商品 ID
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
         if (goodsId == null || goodsId <= 0 || !StringUtils.hasText(path)) {
             return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
@@ -103,15 +118,24 @@ public class SeckillController {
                 goodsVo.getSeckillPrice().toPlainString(),
                 String.valueOf(System.currentTimeMillis())
         );
-        if (result == null || result == 0L) {
+        if (result == null || result == 0L) { // Lua 0：库存键不存在或库存已扣尽
             cacheManager.putEmpty(goodsId);
             return RespBean.error(RespBeanEnum.EMPTY_STOCK);
-        } else if (result == 2L) {
+        } else if (result == 2L) { // Lua 2：该用户已抢过此商品
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
         }
+        // Lua 1：预扣成功并写入 Outbox，此处 0 表示排队中而非订单号
         return RespBean.success(0);
     }
 
+    /**
+     * 轮询秒杀结果，对应 {@code GET /seckill/result}、{@code seckillApi.result}。
+     *
+     * @param user    当前登录用户
+     * @param goodsId 商品 ID
+     * @return {@code obj}：订单号字符串表示成功；{@code -1} 售罄；{@code 0} 仍在排队
+     * @implNote 先读 Redis 订单缓存，未命中再查库并回填 Redis；空库存标记只读 Redis
+     */
     @RequestMapping(value = "/result", method = RequestMethod.GET)
     @ResponseBody
     public RespBean getResult(User user, Long goodsId) {
@@ -136,6 +160,14 @@ public class SeckillController {
         return RespBean.success(0);
     }
 
+    /**
+     * 生成算术验证码图，对应 {@code GET /seckill/captcha}、{@code seckillApi.captcha}。
+     *
+     * @param user     当前登录用户
+     * @param goodsId  商品 ID，验证码按用户+商品隔离
+     * @param response 直接写出 {@code image/gif}，无 JSON 包装
+     * @implNote 正确答案写入 Redis，短时过期；非法参数抛 {@link GlobalException}
+     */
     @AccessLimit(second = 5, maxCount = 5, needLogin = true)
     @GetMapping(value = "/captcha")
     public void getCaptcha(User user, @RequestParam("goodsId") Long goodsId, HttpServletResponse response) {
@@ -152,6 +184,15 @@ public class SeckillController {
         try { captcha.out(response.getOutputStream()); } catch (Exception e) { log.error("验证码生成失败", e); }
     }
 
+    /**
+     * 校验验证码并下发一次性秒杀路径，对应 {@code GET /seckill/path}、{@code seckillApi.path}。
+     *
+     * @param user    当前登录用户
+     * @param goodsId 商品 ID
+     * @param captcha 用户提交的验证码文本
+     * @return 成功时 {@code obj} 为隐藏路径字符串，随后拼进 {@code /seckill/{path}/doSeckill}
+     * @implNote 读 Redis 验证码后删除（一次性）；新路径写入 Redis
+     */
     @AccessLimit(second = 5, maxCount = 5, needLogin = true)
     @GetMapping(value = "/path")
     @ResponseBody

@@ -1,4 +1,9 @@
 <script setup lang="ts">
+/**
+ * 支付宝同步跳回页（`/success` 与 `/payment/success`）。不调后端，最终状态以异步回调为准。
+ *
+ * 无后端接口。按钮仅导航回会场或订单列表，由用户自行刷新订单状态。
+ */
 import { CircleCheckFilled } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 

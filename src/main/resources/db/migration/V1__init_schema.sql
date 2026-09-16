@@ -1,3 +1,8 @@
+-- Flyway V1：初始化秒杀系统表结构。
+-- 覆盖用户、管理员、普通商品、秒杀场次、订单、秒杀订单唯一约束、支付流水。
+-- 订单 status：-2 待退款、-1 已取消、0 待支付、1 已支付。
+-- 本脚本只建表，演示账号与三种秒杀窗口见 sql/seed.sql。
+
 CREATE TABLE IF NOT EXISTS t_user (
     id BIGINT NOT NULL,
     nickname VARCHAR(64) NOT NULL,

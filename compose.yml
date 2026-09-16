@@ -1,3 +1,7 @@
+# 本地/演示编排：MySQL + Redis + RabbitMQ + 后端 app。
+# 凭据与支付宝参数从 `.env` 读取，模板见 `.env.example`。
+# 前端仍用 `frontend` 目录单独 `npm run dev` 或另行部署 Nginx。
+
 services:
   mysql:
     image: mysql:9.4

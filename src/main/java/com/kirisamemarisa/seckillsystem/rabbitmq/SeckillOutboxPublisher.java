@@ -13,6 +13,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 秒杀 Outbox 补偿发布器。
+ *
+ * <p>热路径 Lua 预扣库存时写入 Redis Outbox（ZSET {@link SeckillKey#outboxPending}
+ * + HASH {@link SeckillKey#outboxEvent}），本组件定时扫描到期事件，
+ * 经 {@link MQSender} 投递到 {@code seckillExchange}，成功后再删除 Outbox 记录。
+ *
+ * <p>投递失败按重试次数指数退避，重新写入 ZSET score；{@link SeckillKey#outboxLock}
+ * 保证多实例不会并发发布同一 eventId。
+ */
 @Slf4j
 @Component
 public class SeckillOutboxPublisher {
@@ -21,6 +31,9 @@ public class SeckillOutboxPublisher {
     @Autowired private StringRedisTemplate stringRedisTemplate;
     @Autowired private MQSender mqSender;
 
+    /**
+     * 扫描 score ≤ 当前时间的待投递事件并逐条发布。
+     */
     @Scheduled(fixedDelayString = "${seckill.outbox.poll-interval-ms:200}")
     public void publishPendingEvents() {
         long now = System.currentTimeMillis();
@@ -34,6 +47,9 @@ public class SeckillOutboxPublisher {
         }
     }
 
+    /**
+     * 抢锁后读取事件 HASH，可靠投递 MQ；成功删除 Outbox，失败则推迟 score 后重试。
+     */
     private void publishOne(String eventId) {
         String lockKey = SeckillKey.outboxLock.getPrefix() + eventId;
         Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(
@@ -72,11 +88,13 @@ public class SeckillOutboxPublisher {
         }
     }
 
+    /** 累加事件 HASH 中的 {@code retryCount}，供退避计算。 */
     private int incrementRetryCount(String eventKey) {
         Long count = stringRedisTemplate.opsForHash().increment(eventKey, "retryCount", 1);
         return count == null ? 1 : count.intValue();
     }
 
+    /** 读取 Outbox 必填字段，缺失则视为损坏事件。 */
     private String required(Map<Object, Object> values, String key) {
         Object value = values.get(key);
         if (value == null) {

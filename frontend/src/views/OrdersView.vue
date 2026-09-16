@@ -1,4 +1,15 @@
 <script setup lang="ts">
+/**
+ * 我的订单。需用户登录（路由 requiresAuth）。待支付订单可打开支付宝收银台。
+ *
+ * 后端接口：
+ * - GET /order/list — orderApi.list
+ * - GET /pay/create/{orderId} — orderApi.paymentPage，返回收银台 HTML
+ *
+ * 关键函数：
+ * - loadOrders：分页拉取当前用户订单
+ * - pay：先开空白窗口再写入 HTML，避免弹窗拦截导致无法支付
+ */
 import { onMounted, ref } from 'vue'
 import { RefreshRight, Wallet } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'

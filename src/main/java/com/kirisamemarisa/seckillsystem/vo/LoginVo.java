@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+/**
+ * 用户登录入参。手机号即 {@code t_user.id}；密码 8~72 位以兼容 BCrypt 上限。
+ */
 @Data
 public class LoginVo {
     @NotBlank(message = "手机号码不能为空")

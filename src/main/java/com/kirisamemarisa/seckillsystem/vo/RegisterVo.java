@@ -6,6 +6,9 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.hibernate.validator.constraints.Length;
 
+/**
+ * 用户注册入参。校验失败由全局异常处理成 {@code BIND_ERROR}，不会进 {@code IUserService}。
+ */
 @Data
 public class RegisterVo {
     @NotBlank(message = "昵称不能为空")

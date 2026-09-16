@@ -12,7 +12,8 @@
     <artifactId>Seckill-System</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Seckill-System</name>
-    <description>Seckill-System</description>
+    <!-- 高并发秒杀演示：Spring Boot 单体 + Redis Lua 预扣 + RabbitMQ 削峰 + Vue 前端。 -->
+    <description>秒杀系统后端。HTTP API 供 frontend/ 调用；库存以 Redis Lua 为准，订单经 MQ 异步落库。</description>
     <properties>
         <java.version>21</java.version>
     </properties>

@@ -1,4 +1,5 @@
 {
+  // 工程级 TypeScript 解决方案：拆成 app / node 两个引用，避免 Vite 配置与页面源码混用同一套 lib
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },

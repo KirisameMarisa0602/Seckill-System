@@ -7,12 +7,25 @@ import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 
+/**
+ * Redis Pub/Sub 库存恢复监听器。
+ *
+ * <p>订阅频道 {@code stock_replenish_channel}（在 {@link RedisConfig#container} 注册），
+ * 收到商品 ID 后清除本进程 Caffeine 售罄标记，让补货后的请求重新走 Redis。
+ * 依赖中间件：Redis。无 {@code @Order}，随容器启动订阅。
+ */
 @Slf4j
 @Component
 public class StockRestoreListener implements MessageListener {
     @Autowired
     private LocalCacheManager cacheManager;
 
+    /**
+     * 处理全服补货广播。消息体为商品 ID 字符串，Jackson 序列化时可能带引号，需剥掉后再解析。
+     *
+     * @param message Redis 原始消息
+     * @param pattern 匹配到的频道模式
+     */
     @Override
     public void onMessage(Message message, byte[] pattern) {
         try {
