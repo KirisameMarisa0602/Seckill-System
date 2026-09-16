@@ -1,11 +1,13 @@
 package com.kirisamemarisa.seckillsystem.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.kirisamemarisa.seckillsystem.entity.Goods;
+import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
 import com.kirisamemarisa.seckillsystem.entity.SeckillGoods;
 import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 import com.kirisamemarisa.seckillsystem.mapper.GoodsMapper;
+import com.kirisamemarisa.seckillsystem.mapper.OrderInfoMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.redis.GoodsKey;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
@@ -19,7 +21,10 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -29,6 +34,8 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
     @Autowired private GoodsMapper goodsMapper;
 
     @Autowired private SeckillGoodsMapper seckillGoodsMapper;
+
+    @Autowired private OrderInfoMapper orderInfoMapper;
 
     @Autowired private StringRedisTemplate stringRedisTemplate;
 
@@ -114,6 +121,15 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RespBean addSeckillGoods(AddGoodsVo addGoodsVo) {
+        RespBean validationError = validateInventoryAndPrice(
+                addGoodsVo.getGoodsStock(),
+                addGoodsVo.getSeckillStock(),
+                addGoodsVo.getGoodsPrice(),
+                addGoodsVo.getSeckillPrice()
+        );
+        if (validationError != null) {
+            return validationError;
+        }
         Goods goods = new Goods();
         goods.setGoodsName(addGoodsVo.getGoodsName());
         goods.setGoodsTitle(addGoodsVo.getGoodsTitle());
@@ -130,26 +146,35 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         seckillGoods.setStartDate(addGoodsVo.getStartDate());
         seckillGoods.setEndDate(addGoodsVo.getEndDate());
         seckillGoodsMapper.insert(seckillGoods);
-        stringRedisTemplate.opsForValue().set(GoodsKey.getSeckillGoodsStock.getPrefix() + newGoodsId, String.valueOf(addGoodsVo.getSeckillStock()));
-        stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + newGoodsId);
-        RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
-        if (!bloomFilter.isExists()) { bloomFilter.tryInit(10000L, 0.01); }
-        bloomFilter.add(newGoodsId);
-        RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + newGoodsId);
-        rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
+        afterCommit(() -> {
+            stringRedisTemplate.opsForValue().set(
+                    GoodsKey.getSeckillGoodsStock.getPrefix() + newGoodsId,
+                    String.valueOf(addGoodsVo.getSeckillStock()));
+            stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + newGoodsId);
+            RBloomFilter<Long> bloomFilter = redissonClient.getBloomFilter("seckillGoodsBloomFilter");
+            if (!bloomFilter.isExists()) { bloomFilter.tryInit(10000L, 0.01); }
+            bloomFilter.add(newGoodsId);
+            RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + newGoodsId);
+            rateLimiter.trySetRate(RateType.OVERALL, 100, 1, RateIntervalUnit.SECONDS);
+        });
         return RespBean.success("商品上架成功！新增ID为：" + newGoodsId);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RespBean deleteSeckillGoods(Long goodsId) {
+        if (countPendingOrders(goodsId) > 0) {
+            return businessError("该商品仍有待支付订单，禁止下架");
+        }
         goodsMapper.deleteById(goodsId);
         seckillGoodsMapper.delete(new QueryWrapper<SeckillGoods>().eq("goods_id", goodsId));
-        stringRedisTemplate.delete(GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId);
-        stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + goodsId);
-        redisTemplate.delete(GoodsKey.getGoodsVo.getPrefix() + goodsId);
-        RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
-        if (rateLimiter.isExists()) { rateLimiter.delete(); }
+        afterCommit(() -> {
+            stringRedisTemplate.delete(GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId);
+            stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + goodsId);
+            redisTemplate.delete(GoodsKey.getGoodsVo.getPrefix() + goodsId);
+            RRateLimiter rateLimiter = redissonClient.getRateLimiter("seckill:rateLimiter:" + goodsId);
+            if (rateLimiter.isExists()) { rateLimiter.delete(); }
+        });
         return RespBean.success("旧有秒杀商品已彻底下架！");
     }
 
@@ -159,7 +184,35 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         Long goodsId = vo.getId();
         Goods existGoods = goodsMapper.selectById(goodsId);
         if (existGoods == null) { return RespBean.error(RespBeanEnum.BIND_ERROR); }
-        redisTemplate.delete(GoodsKey.getGoodsVo.getPrefix() + goodsId);
+        GoodsVo current = goodsMapper.findGoodsVoByGoodsId(goodsId);
+        if (current == null || current.getStockCount() == null) {
+            return businessError("秒杀商品配置不存在");
+        }
+
+        Integer effectiveGoodsStock = vo.getGoodsStock() == null ? existGoods.getGoodsStock() : vo.getGoodsStock();
+        Integer effectiveSeckillStock = vo.getSeckillStock() == null ? current.getStockCount() : vo.getSeckillStock();
+        java.math.BigDecimal effectiveGoodsPrice =
+                vo.getGoodsPrice() == null ? existGoods.getGoodsPrice() : vo.getGoodsPrice();
+        java.math.BigDecimal effectiveSeckillPrice =
+                vo.getSeckillPrice() == null ? current.getSeckillPrice() : vo.getSeckillPrice();
+        RespBean validationError = validateInventoryAndPrice(
+                effectiveGoodsStock, effectiveSeckillStock, effectiveGoodsPrice, effectiveSeckillPrice);
+        if (validationError != null) {
+            return validationError;
+        }
+
+        LocalDateTime effectiveStart = vo.getStartDate() == null ? current.getStartDate() : vo.getStartDate();
+        LocalDateTime effectiveEnd = vo.getEndDate() == null ? current.getEndDate() : vo.getEndDate();
+        if (effectiveStart == null || effectiveEnd == null || !effectiveEnd.isAfter(effectiveStart)) {
+            return businessError("秒杀结束时间必须晚于开始时间");
+        }
+        boolean inventoryChanged = vo.getGoodsStock() != null || vo.getSeckillStock() != null;
+        boolean activityRunning = current.getStartDate() != null && current.getEndDate() != null
+                && !LocalDateTime.now().isBefore(current.getStartDate())
+                && !LocalDateTime.now().isAfter(current.getEndDate());
+        if (inventoryChanged && (activityRunning || countPendingOrders(goodsId) > 0)) {
+            return businessError("活动进行中或仍有待支付订单，禁止直接覆盖库存");
+        }
         boolean needUpdateGoods = false;
         Goods goods = new Goods();
         goods.setId(goodsId);
@@ -179,19 +232,66 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         if (needUpdateSeckill) {
             seckillGoodsMapper.update(sg, new QueryWrapper<SeckillGoods>().eq("goods_id", goodsId));
         }
-        if (vo.getSeckillStock() != null) {
-            stringRedisTemplate.opsForValue().set(GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId, String.valueOf(vo.getSeckillStock()));
-            if (vo.getSeckillStock() > 0) {
-                stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + goodsId);
-                stringRedisTemplate.convertAndSend("stock_replenish_channel", goodsId.toString());
-            } else {
-                stringRedisTemplate.opsForValue().set(GoodsKey.isStockEmpty.getPrefix() + goodsId, "0");
+        afterCommit(() -> {
+            redisTemplate.delete(GoodsKey.getGoodsVo.getPrefix() + goodsId);
+            if (vo.getSeckillStock() != null) {
+                stringRedisTemplate.opsForValue().set(
+                        GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId,
+                        String.valueOf(vo.getSeckillStock()));
+                if (vo.getSeckillStock() > 0) {
+                    stringRedisTemplate.delete(GoodsKey.isStockEmpty.getPrefix() + goodsId);
+                    stringRedisTemplate.convertAndSend("stock_replenish_channel", goodsId.toString());
+                } else {
+                    stringRedisTemplate.opsForValue().set(
+                            GoodsKey.isStockEmpty.getPrefix() + goodsId, "1");
+                }
             }
-        }
-        RBlockingQueue<Long> blockingQueue = redissonClient.getBlockingQueue("delay_double_delete_queue");
-        RDelayedQueue<Long> delayedQueue = redissonClient.getDelayedQueue(blockingQueue);
-        delayedQueue.offer(goodsId, 500, TimeUnit.MILLISECONDS);
+            RBlockingQueue<Long> blockingQueue = redissonClient.getBlockingQueue("delay_double_delete_queue");
+            RDelayedQueue<Long> delayedQueue = redissonClient.getDelayedQueue(blockingQueue);
+            delayedQueue.offer(goodsId, 500, TimeUnit.MILLISECONDS);
+        });
         return RespBean.success("商品信息与缓存状态热同步完毕！已投递容灾级延迟双删队列。");
+    }
+
+    private long countPendingOrders(Long goodsId) {
+        return orderInfoMapper.selectCount(new QueryWrapper<OrderInfo>()
+                .eq("goods_id", goodsId)
+                .eq("status", 0));
+    }
+
+    private RespBean validateInventoryAndPrice(Integer goodsStock, Integer seckillStock,
+                                               java.math.BigDecimal goodsPrice,
+                                               java.math.BigDecimal seckillPrice) {
+        if (goodsStock == null || seckillStock == null || seckillStock > goodsStock) {
+            return businessError("秒杀库存不能大于普通库存");
+        }
+        if (goodsPrice == null || seckillPrice == null || seckillPrice.compareTo(goodsPrice) > 0) {
+            return businessError("秒杀价格不能高于商品原价");
+        }
+        return null;
+    }
+
+    private RespBean businessError(String message) {
+        RespBean response = RespBean.error(RespBeanEnum.BIND_ERROR);
+        response.setMessage(message);
+        return response;
+    }
+
+    private void afterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    action.run();
+                } catch (Exception e) {
+                    log.error("数据库事务已提交，但缓存同步失败，将由预热/对账任务恢复", e);
+                }
+            }
+        });
     }
 
     @Override

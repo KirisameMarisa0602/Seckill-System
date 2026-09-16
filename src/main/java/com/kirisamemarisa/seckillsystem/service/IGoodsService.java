@@ -1,6 +1,6 @@
 package com.kirisamemarisa.seckillsystem.service;
 
-import com.baomidou.mybatisplus.extension.service.IService;
+import com.baomidou.mybatisplus.spring.service.IService;
 import com.kirisamemarisa.seckillsystem.entity.Goods;
 import com.kirisamemarisa.seckillsystem.vo.AddGoodsVo;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;

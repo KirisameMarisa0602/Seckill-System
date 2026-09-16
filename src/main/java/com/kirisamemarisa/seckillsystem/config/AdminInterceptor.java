@@ -36,6 +36,7 @@ public class AdminInterceptor implements HandlerInterceptor {
     }
 
     private void returnError(HttpServletResponse response, String msg) throws Exception {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         PrintWriter out = response.getWriter();
         RespBean respBean = RespBean.error(RespBeanEnum.SESSION_ERROR);

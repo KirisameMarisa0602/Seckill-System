@@ -2,15 +2,14 @@ package com.kirisamemarisa.seckillsystem.controller;
 
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.manager.LocalCacheManager;
-import com.kirisamemarisa.seckillsystem.rabbitmq.MQSender;
 import com.kirisamemarisa.seckillsystem.redis.GoodsKey;
 import com.kirisamemarisa.seckillsystem.redis.OrderKey;
 import com.kirisamemarisa.seckillsystem.redis.SeckillKey;
 import com.kirisamemarisa.seckillsystem.service.IGoodsService;
+import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
-import com.kirisamemarisa.seckillsystem.vo.SeckillMessage;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import org.redisson.api.RBloomFilter;
 import org.redisson.api.RedissonClient;
@@ -34,11 +33,11 @@ import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 @RestController
 @RequestMapping("/seckill")
 public class SeckillController {
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+
     @Autowired private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired private StringRedisTemplate stringRedisTemplate;
-
-    @Autowired private MQSender mqSender;
 
     @Autowired private DefaultRedisScript<Long> seckillScript;
 
@@ -46,17 +45,26 @@ public class SeckillController {
 
     @Autowired private IGoodsService goodsService;
 
+    @Autowired private IOrderService orderService;
+
     @Autowired private LocalCacheManager cacheManager;
 
     @RequestMapping(value = "/{path}/doSeckill", method = RequestMethod.POST)
     @ResponseBody
+    @AccessLimit(second = 5, maxCount = 10, needLogin = true)
     public RespBean doSeckill(@PathVariable("path") String path, User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
+        if (goodsId == null || goodsId <= 0 || !StringUtils.hasText(path)) {
+            return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
+        }
         GoodsVo goodsVo = goodsService.findGoodsVoByGoodsId(goodsId);
-        if (goodsVo == null) { return RespBean.error(RespBeanEnum.SECKILL_NOT_START); }
+        if (goodsVo == null || goodsVo.getStartDate() == null || goodsVo.getEndDate() == null
+                || goodsVo.getSeckillPrice() == null) {
+            return RespBean.error(RespBeanEnum.SECKILL_NOT_START);
+        }
         long now = System.currentTimeMillis();
-        long startTime = goodsVo.getStartDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long endTime = goodsVo.getEndDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long startTime = goodsVo.getStartDate().atZone(BUSINESS_ZONE).toInstant().toEpochMilli();
+        long endTime = goodsVo.getEndDate().atZone(BUSINESS_ZONE).toInstant().toEpochMilli();
         if(now < startTime || now > endTime){
             return RespBean.error(RespBeanEnum.SECKILL_NOT_START);
         }
@@ -77,14 +85,23 @@ public class SeckillController {
         if (!path.equals(realPath)) { return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL); }
         long expireSeconds = (endTime - now) / 1000;
         if (expireSeconds <= 0) expireSeconds = 3600;
+        String eventId = UUID.randomUUID().toString().replace("-", "");
         Long result = stringRedisTemplate.execute(
                 seckillScript,
                 Arrays.asList(
                         GoodsKey.getSeckillGoodsStock.getPrefix() + goodsId,
                         OrderKey.seckillUserOrder.getPrefix() + user.getId() + ":" + goodsId,
-                        GoodsKey.isStockEmpty.getPrefix() + goodsId
+                        GoodsKey.isStockEmpty.getPrefix() + goodsId,
+                        SeckillKey.outboxPending.getPrefix(),
+                        SeckillKey.outboxEvent.getPrefix()
                 ),
-                String.valueOf(expireSeconds)
+                String.valueOf(expireSeconds),
+                eventId,
+                String.valueOf(user.getId()),
+                String.valueOf(goodsId),
+                goodsVo.getGoodsName(),
+                goodsVo.getSeckillPrice().toPlainString(),
+                String.valueOf(System.currentTimeMillis())
         );
         if (result == null || result == 0L) {
             cacheManager.putEmpty(goodsId);
@@ -92,7 +109,6 @@ public class SeckillController {
         } else if (result == 2L) {
             return RespBean.error(RespBeanEnum.REPEAT_ERROR);
         }
-        mqSender.sendSeckillMessage(new SeckillMessage(user.getId(), goodsId, goodsVo.getGoodsName(), goodsVo.getSeckillPrice()));
         return RespBean.success(0);
     }
 
@@ -100,8 +116,21 @@ public class SeckillController {
     @ResponseBody
     public RespBean getResult(User user, Long goodsId) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
+        if (goodsId == null || goodsId <= 0) {
+            return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
+        }
         Object orderIdStr = redisTemplate.opsForValue().get(OrderKey.seckillOrderCache.getPrefix() + user.getId() + ":" + goodsId);
         if (orderIdStr != null) { return RespBean.success(String.valueOf(orderIdStr)); }
+        Long persistedOrderId = orderService.findSeckillOrderId(user.getId(), goodsId);
+        if (persistedOrderId != null) {
+            redisTemplate.opsForValue().set(
+                    OrderKey.seckillOrderCache.getPrefix() + user.getId() + ":" + goodsId,
+                    persistedOrderId,
+                    OrderKey.seckillOrderCache.expireSeconds(),
+                    TimeUnit.SECONDS
+            );
+            return RespBean.success(String.valueOf(persistedOrderId));
+        }
         boolean isStockEmpty = stringRedisTemplate.hasKey(GoodsKey.isStockEmpty.getPrefix() + goodsId);
         if (isStockEmpty) { return RespBean.success(-1); }
         return RespBean.success(0);
@@ -110,7 +139,7 @@ public class SeckillController {
     @AccessLimit(second = 5, maxCount = 5, needLogin = true)
     @GetMapping(value = "/captcha")
     public void getCaptcha(User user, @RequestParam("goodsId") Long goodsId, HttpServletResponse response) {
-        if (user == null || goodsId < 0) {
+        if (user == null || goodsId == null || goodsId <= 0) {
             throw new GlobalException(RespBeanEnum.REQUEST_ILLEGAL);
         }
         response.setContentType("image/gif");
@@ -128,11 +157,16 @@ public class SeckillController {
     @ResponseBody
     public RespBean getSeckillPath(User user, Long goodsId, String captcha) {
         if (user == null) { return RespBean.error(RespBeanEnum.USER_NOT_EXIST); }
+        if (goodsId == null || goodsId <= 0) {
+            return RespBean.error(RespBeanEnum.REQUEST_ILLEGAL);
+        }
         GoodsVo goods = goodsService.findGoodsVoByGoodsId(goodsId);
-        if (goods == null) { return RespBean.error(RespBeanEnum.BIND_ERROR); }
+        if (goods == null || goods.getStartDate() == null || goods.getEndDate() == null) {
+            return RespBean.error(RespBeanEnum.BIND_ERROR);
+        }
         long now = System.currentTimeMillis();
-        long startTime = goods.getStartDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long endTime = goods.getEndDate().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long startTime = goods.getStartDate().atZone(BUSINESS_ZONE).toInstant().toEpochMilli();
+        long endTime = goods.getEndDate().atZone(BUSINESS_ZONE).toInstant().toEpochMilli();
         if (now < startTime || now > endTime) { return RespBean.error(RespBeanEnum.SECKILL_NOT_START); }
         if (!StringUtils.hasText(captcha)) { return RespBean.error(RespBeanEnum.CAPTCHA_ERROR); }
         String captchaKey = SeckillKey.getSeckillCaptcha.getPrefix() + user.getId() + ":" + goodsId;

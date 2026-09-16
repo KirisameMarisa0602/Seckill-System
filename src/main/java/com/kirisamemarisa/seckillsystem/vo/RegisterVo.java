@@ -2,6 +2,7 @@ package com.kirisamemarisa.seckillsystem.vo;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.hibernate.validator.constraints.Length;
 
@@ -16,6 +17,6 @@ public class RegisterVo {
     private String mobile;
 
     @NotBlank(message = "密码不能为空")
-    @Length(min = 32, message = "密码必须是MD5格式(长度32位)")
+    @Size(min = 8, max = 72, message = "密码长度必须在8到72个字符之间")
     private String password;
 }

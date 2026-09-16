@@ -9,6 +9,7 @@ import com.kirisamemarisa.seckillsystem.vo.RespBean;
 import com.kirisamemarisa.seckillsystem.vo.RespBeanEnum;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -18,8 +19,8 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import java.util.Collections;
+import java.util.Arrays;
 import java.io.PrintWriter;
-import java.util.concurrent.TimeUnit;
 
 @Component
 public class AccessLimitInterceptor implements HandlerInterceptor {
@@ -29,9 +30,11 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
 
     @Autowired private DefaultRedisScript<Long> rateLimitScript;
 
+    @Value("${app.security.trusted-proxies:127.0.0.1,::1}")
+    private String trustedProxies;
+
     private User getUser(HttpServletRequest request) {
         String token = request.getHeader("token");
-        if (!StringUtils.hasText(token)) { token = request.getParameter("token"); }
         if (!StringUtils.hasText(token)) return null;
         return (User) redisTemplate.opsForValue().get(UserKey.token.getPrefix() + token);
     }
@@ -51,7 +54,8 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                 String key = request.getRequestURI();
                 String ip = request.getRemoteAddr();
                 String xff = request.getHeader("X-Forwarded-For");
-                if (StringUtils.hasText(xff) && !"unknown".equalsIgnoreCase(xff)) {
+                if (isTrustedProxy(ip) && StringUtils.hasText(xff)
+                        && !"unknown".equalsIgnoreCase(xff)) {
                     ip = xff.split(",")[0].trim();
                 }
                 String blackKey = AccessKey.blacklist.getPrefix() + ip;
@@ -79,7 +83,6 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
                         String.valueOf(second)
                 );
                 if (result != null && result == 0L) {
-                    stringRedisTemplate.opsForValue().set(blackKey, "1", AccessKey.blacklist.expireSeconds(), TimeUnit.SECONDS);
                     render(response, RespBeanEnum.ACCESS_LIMIT_REACHED);
                     UserContext.remove();
                     return false;
@@ -92,12 +95,23 @@ public class AccessLimitInterceptor implements HandlerInterceptor {
         }
     }
 
+    private boolean isTrustedProxy(String remoteAddress) {
+        return Arrays.stream(trustedProxies.split(","))
+                .map(String::trim)
+                .anyMatch(remoteAddress::equals);
+    }
+
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserContext.remove();
     }
 
     private void render(HttpServletResponse response, RespBeanEnum respBeanEnum) throws Exception {
+        if (respBeanEnum == RespBeanEnum.ACCESS_LIMIT_REACHED) {
+            response.setStatus(429);
+        } else if (respBeanEnum == RespBeanEnum.USER_NOT_EXIST) {
+            response.setStatus(401);
+        }
         response.setContentType("application/json;charset=UTF-8");
         PrintWriter out = response.getWriter();
         out.write(new ObjectMapper().writeValueAsString(RespBean.error(respBeanEnum)));
