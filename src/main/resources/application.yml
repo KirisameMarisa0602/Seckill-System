@@ -1,50 +1,106 @@
+# Spring Boot 主配置。敏感项一律走环境变量，勿把密钥写入仓库。
+# 变量模板见仓库根目录 `.env.example`。
+
 server:
+  # 服务端口；Docker Compose 默认映射到宿主机 8080
   port: ${SERVER_PORT:8080}
+  # 收到 SIGTERM 后等在途请求结束再退出
+  shutdown: graceful
+  # 不信任转发头，真实客户端 IP 由白名单代理另行解析
+  forward-headers-strategy: none
 
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/seckill?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
-    username: root
-    password: ${DB_PASSWORD:123456}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 3000
+      validation-timeout: 1000
+
+  # 启动时执行 classpath:db/migration 下的版本化 SQL
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  jackson:
+    time-zone: Asia/Shanghai
 
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
-      database: 0
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
       timeout: 3000ms
       lettuce:
         pool:
-          max-active: 8
-          max-wait: -1ms
-          max-idle: 8
-          min-idle: 0
+          max-active: ${REDIS_POOL_MAX_ACTIVE:32}
+          max-wait: 1000ms
+          max-idle: ${REDIS_POOL_MAX_IDLE:16}
+          min-idle: ${REDIS_POOL_MIN_IDLE:4}
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
-    virtual-host: /
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    # 发布确认 + 强制退回，配合 Outbox 补偿未投递消息
     publisher-confirm-type: correlated
     publisher-returns: true
+    template:
+      mandatory: true
     listener:
       simple:
         acknowledge-mode: manual
+        prefetch: ${RABBITMQ_PREFETCH:20}
+        concurrency: ${RABBITMQ_CONCURRENCY:3}
+        max-concurrency: ${RABBITMQ_MAX_CONCURRENCY:10}
 
 mybatis-plus:
   global-config:
+    # 雪花 ID 的机房/机器号，多实例部署时需错开
     datacenter-id: ${DATACENTER_ID:1}
     worker-id: ${WORKER_ID:1}
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+# 支付宝沙箱/正式网关。notifyUrl 必须公网可达，returnUrl 指向前端支付结果页。
 alipay:
-  gatewayUrl: https://openapi-sandbox.dl.alipaydev.com/gateway.do
-  appId: ${ALIPAY_APPID:123456}
-  merchantPrivateKey: ${ALIPAY_PRIVATE_KEY:123456}
-  alipayPublicKey: ${ALIPAY_PUBLIC_KEY:123456}
-  notifyUrl: http://6264536d.r21.cpolar.top/pay/notify
-  returnUrl: http://localhost:3000/success
+  gatewayUrl: ${ALIPAY_GATEWAY_URL:https://openapi-sandbox.dl.alipaydev.com/gateway.do}
+  appId: ${ALIPAY_APP_ID}
+  sellerId: ${ALIPAY_SELLER_ID:}
+  merchantPrivateKey: ${ALIPAY_PRIVATE_KEY}
+  alipayPublicKey: ${ALIPAY_PUBLIC_KEY}
+  notifyUrl: ${ALIPAY_NOTIFY_URL}
+  returnUrl: ${ALIPAY_RETURN_URL}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: seckill-system
+
+app:
+  security:
+    # 逗号分隔的反向代理 CIDR/IP，用于解析真实客户端地址
+    trusted-proxies: "${TRUSTED_PROXIES:127.0.0.1,::1}"
+    # 浏览器 CORS 白名单；留空则不开放跨域
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  # 仅当库中尚无管理员时写入引导账号
+  bootstrap-admin:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}

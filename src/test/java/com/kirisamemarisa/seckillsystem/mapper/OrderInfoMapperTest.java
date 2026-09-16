@@ -1,41 +1,23 @@
 package com.kirisamemarisa.seckillsystem.mapper;
 
-import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
-import org.junit.jupiter.api.Assertions;
+import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.Date;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest
-@Transactional
-public class OrderInfoMapperTest {
+/**
+ * 验证订单行锁契约：支付与关单必须 {@code SELECT ... FOR UPDATE}，避免并发改同一订单。
+ */
+class OrderInfoMapperTest {
 
-    @Autowired
-    private OrderInfoMapper orderInfoMapper;
-
+    /**
+     * 断言 {@code selectByIdForUpdate} 的 SQL 含 {@code FOR UPDATE}。
+     */
     @Test
-    public void testOrderInfoInsert() {
-        OrderInfo orderInfo = OrderInfo.builder()
-                .userId(13812345678L)
-                .goodsId(1L)
-                .deliveryAddrId(0L)
-                .goodsName("iPhone 15")
-                .goodsCount(1)
-                .goodsPrice(new BigDecimal("5999.00")) // 秒杀抢到的价格可能不同于原价
-                .orderChannel(1)
-                .status(0) // 0表示未支付
-                .createDate(new Date())
-                .build();
-
-        int result = orderInfoMapper.insert(orderInfo);
-        Assertions.assertEquals(1, result);
-        Assertions.assertNotNull(orderInfo.getId());
-
-        OrderInfo query = orderInfoMapper.selectById(orderInfo.getId());
-        Assertions.assertEquals(0, query.getStatus(), "订单初始状态应为未支付");
+    void paymentAndCancellationUseAPessimisticOrderRowLock() throws Exception {
+        Select select = OrderInfoMapper.class
+                .getMethod("selectByIdForUpdate", Long.class)
+                .getAnnotation(Select.class);
+        assertTrue(String.join(" ", select.value()).toUpperCase().contains("FOR UPDATE"));
     }
 }

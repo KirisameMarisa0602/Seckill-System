@@ -4,6 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.ToString;
 
+/**
+ * 业务状态码。200 成功；5xxxxx 为业务错误，由 Service 返回或 {@code GlobalException} 抛出。
+ */
 @Getter
 @ToString
 @AllArgsConstructor
@@ -12,6 +15,7 @@ public enum RespBeanEnum {
     ERROR(500, "服务端异常"),
     LOGIN_ERROR(500210, "用户名或密码不正确"),
     MOBILE_FORMAT_ERROR(500211, "手机号码格式不正确"),
+    /** 参数校验失败；商品库存/价格等业务拒绝也会复用此码并改写 message。 */
     BIND_ERROR(500212, "参数校验异常"),
     SESSION_ERROR(500213, "用户凭证非法或已过期，请重新登录"),
     EMPTY_STOCK(500200, "抱歉，库存不足！"),
@@ -22,8 +26,11 @@ public enum RespBeanEnum {
     ACCESS_LIMIT_REACHED(500205, "访问过于频繁，请稍后再试"),
     MOBILE_HAS_REGISTERED(500206, "手机号已注册，请直接登录"),
     SECKILL_NOT_START(500207, "秒杀未开始或已结束"),
+    /** 商品详情缓存击穿时抢锁失败，提示前端稍后重试。 */
     RATE_LIMIT_ERROR(500505, "当前抢购人数过多，请排队等待稍后再试");
-    //因为是规定的状态码枚举，final，不需更改，所以只需要@Getter注解
+
+    /** HTTP/业务码。200 成功，其余为失败。 */
     private final Integer code;
+    /** 给前端展示的文案；部分接口会在返回前改写。 */
     private final String message;
 }

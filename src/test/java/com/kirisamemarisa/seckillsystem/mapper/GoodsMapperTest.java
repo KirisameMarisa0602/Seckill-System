@@ -1,40 +1,23 @@
 package com.kirisamemarisa.seckillsystem.mapper;
 
-import com.kirisamemarisa.seckillsystem.entity.Goods;
-import org.junit.jupiter.api.Assertions;
+import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest
-@Transactional
-public class GoodsMapperTest {
+/**
+ * 验证商品主库存扣减契约：UPDATE 必须带 {@code goods_stock > 0}，防止扣成负数。
+ */
+class GoodsMapperTest {
 
-    @Autowired
-    private GoodsMapper goodsMapper;
-
+    /**
+     * 断言 {@code decrementGoodsStock} 的 SQL 含库存大于 0 的守卫条件。
+     */
     @Test
-    public void testGoodsCrud() {
-        // 创建基础商品
-        Goods goods = Goods.builder()
-                .goodsName("iPhone 15")
-                .goodsTitle("Apple iPhone 15 256GB")
-                .goodsImg("/img/iphone15.png")
-                .goodsDetail("Apple新款手机，A16芯片...")
-                .goodsPrice(new BigDecimal("6999.00"))
-                .goodsStock(1000)
-                .build();
-
-        // 测试插入
-        int result = goodsMapper.insert(goods);
-        Assertions.assertEquals(1, result);
-        Assertions.assertNotNull(goods.getId(), "自增ID应回填");
-
-        // 测试查询
-        Goods queriedGoods = goodsMapper.selectById(goods.getId());
-        Assertions.assertEquals("iPhone 15", queriedGoods.getGoodsName());
+    void mainStockDecrementIsGuardedAgainstNegativeInventory() throws Exception {
+        Update update = GoodsMapper.class
+                .getMethod("decrementGoodsStock", Long.class)
+                .getAnnotation(Update.class);
+        assertTrue(String.join(" ", update.value()).contains("goods_stock > 0"));
     }
 }

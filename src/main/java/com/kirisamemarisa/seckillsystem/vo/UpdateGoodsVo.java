@@ -8,11 +8,16 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 管理员热更新商品入参。除 {@code id} 外均为可选，{@code null} 表示该字段不改。
+ * 库存能否改还要看活动是否进行中、有无待支付单，那是 Service 层的契约。
+ */
 @Data
 public class UpdateGoodsVo {
     @NotNull(message = "商品ID不能为空")
     private Long id;
 
+    /** 以下字段为 {@code null} 表示不改。 */
     private String goodsName;
     private String goodsTitle;
     private String goodsImg;

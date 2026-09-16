@@ -1,0 +1,11 @@
+# Docker 构建忽略项：不把 Git/IDE 元数据、本地构建产物、密钥和文档打进镜像上下文。
+.git
+.github
+.idea
+.vscode
+target
+docs
+*.iml
+.env
+.env.*
+!.env.example

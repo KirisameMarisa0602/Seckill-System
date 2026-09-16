@@ -1,0 +1,40 @@
+# 持续集成：所有分支的 push / PR 都跑后端 Maven verify，PR 额外做依赖漏洞审查。
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  # 编译、测试并上传 JaCoCo 覆盖率报告（失败时也保留 artifact）
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Verify
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+
+  # 仅 PR：高危依赖变更直接失败
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

@@ -11,6 +11,9 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 秒杀场次，对应表 {@code t_seckill_goods}。与 {@code t_goods} 一对一（{@code goods_id} 唯一）。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -19,12 +22,18 @@ import java.time.LocalDateTime;
 public class SeckillGoods implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    /** 秒杀场次主键，业务上一般用 {@code goodsId} 关联。 */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /** 对应 {@code t_goods.id}，表上唯一，保证一品一场。 */
     private Long goodsId;
+    /** 秒杀价，必须低于或等于商品原价。 */
     private BigDecimal seckillPrice;
+    /** 秒杀可售库存（预扣）。下单减、超时关单加；与 Redis 可售库存应对齐。 */
     private Integer stockCount;
+    /** 开抢时间。 */
     private LocalDateTime startDate;
+    /** 结束时间，必须晚于开始时间。 */
     private LocalDateTime endDate;
 }
