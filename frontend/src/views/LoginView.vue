@@ -1,13 +1,5 @@
 <script setup lang="ts">
-/**
- * 用户登录页。成功后把 Token 写入 auth store，并跳转到 `redirect` 或会场。
- *
- * 后端接口：
- * - POST /user/login — authApi.login，返回 Token 字符串
- *
- * 关键函数：
- * - submit：校验手机号/密码后登录；已登录用户由路由 guest 守卫拦回首页
- */
+
 import { reactive, ref } from 'vue'
 import { type FormInstance, type FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
@@ -39,7 +31,6 @@ const rules: FormRules = {
   ],
 }
 
-/** 校验表单后登录，成功则写入 Token 并跳转 `redirect` 或会场。 */
 async function submit() {
   formError.value = ''
   formSuccess.value = ''

@@ -1,13 +1,5 @@
 <script setup lang="ts">
-/**
- * 管理员登录页。成功后写入 Admin-Token，进入运营控制台。
- *
- * 后端接口：
- * - POST /admin/login — adminApi.login
- *
- * 关键函数：
- * - submit：校验账号密码后保存管理员会话
- */
+
 import { reactive, ref } from 'vue'
 import { Lock } from '@element-plus/icons-vue'
 import { type FormInstance, type FormRules } from 'element-plus'
@@ -30,7 +22,6 @@ const rules: FormRules = {
   password: [{ required: true, message: '请输入管理员密码', trigger: ['blur', 'change'] }],
 }
 
-/** 校验账号密码后保存管理员会话并进入控制台。 */
 async function submit() {
   formError.value = ''
   formSuccess.value = ''

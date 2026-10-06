@@ -7,6 +7,7 @@ import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.kirisamemarisa.seckillsystem.config.AlipayConfig;
 import com.kirisamemarisa.seckillsystem.config.annotation.AccessLimit;
 import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
+import com.kirisamemarisa.seckillsystem.entity.OrderStatus;
 import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.exception.GlobalException;
 import com.kirisamemarisa.seckillsystem.service.IOrderService;
@@ -22,13 +23,6 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 支付宝电脑网站支付入口。
- *
- * <p>在秒杀链路中位于订单落库之后：用户在 OrdersView 点击支付，前端 {@code orderApi.paymentPage}
- * 调用 {@code GET /pay/create/{orderId}} 拿到支付宝表单 HTML。异步通知 {@code POST /pay/notify}
- * 由支付宝服务器经 Nginx（公网 {@code /api/pay/notify} 剥前缀）回调，不走前端。
- */
 @Slf4j
 @RestController
 @RequestMapping("/pay")
@@ -42,24 +36,19 @@ public class PayController {
     @Autowired
     private ObjectMapper objectMapper;
 
-    /**
-     * 调起支付宝收银台，对应 {@code GET /pay/create/{orderId}}。
-     *
-     * @param user    当前登录用户，须为订单所属人
-     * @param orderId 路径变量，商户订单号（本系统订单主键）
-     * @return 支付宝返回的自动提交表单 HTML；业务失败抛 {@link GlobalException}，由全局异常处理成 JSON
-     * @implNote 只读校验订单状态为待支付；不写库。真正入账在 {@link #payNotify}
-     */
     @AccessLimit(second = 10, maxCount = 10, needLogin = true)
     @GetMapping(value = "/create/{orderId}", produces = "text/html;charset=utf-8")
-    public String payOrder(User user, @PathVariable Long orderId) { // {orderId} 从 URL 路径绑定
+    public String payOrder(User user, @PathVariable Long orderId) {
         if (user == null) {
             throw new GlobalException(RespBeanEnum.USER_NOT_EXIST);
         }
         OrderInfo orderInfo = orderService.getById(orderId);
         if (orderInfo == null || !user.getId().equals(orderInfo.getUserId())
-                || !Integer.valueOf(0).equals(orderInfo.getStatus())) {
+                || !OrderStatus.UNPAID.same(orderInfo.getStatus())) {
             throw new GlobalException(RespBeanEnum.REQUEST_ILLEGAL);
+        }
+        if (!StringUtils.hasText(orderInfo.getReceiverDetail())) {
+            throw new GlobalException(RespBeanEnum.ADDRESS_REQUIRED);
         }
         AlipayClient alipayClient = new DefaultAlipayClient(
                 alipayConfig.getGatewayUrl(),
@@ -87,18 +76,11 @@ public class PayController {
         }
     }
 
-    /**
-     * 支付宝异步通知。须返回纯文本 {@code success}/{@code fail}，支付宝按此决定是否重试。
-     *
-     * @param request 表单参数：{@code out_trade_no}、{@code trade_no}、{@code total_amount}、{@code trade_status} 等
-     * @return {@code success} 表示已受理（含已支付、重复通知、待退款）；{@code fail} 将触发支付宝重试
-     * @implNote 验签通过后写订单状态、支付流水，并尝试扣减商品主库存；取消后付款会记 {@code REFUND_PENDING}
-     */
     @PostMapping("/notify")
     public String payNotify(HttpServletRequest request) {
         Map<String, String[]> requestParams = request.getParameterMap();
         Map<String, String> params = new HashMap<>();
-        // 支付宝 RSA 验签要求：同名多值用逗号拼成一个字符串后再验
+
         for (String name : requestParams.keySet()) {
             String[] values = requestParams.get(name);
             String valueStr = String.join(",", values);
@@ -146,7 +128,7 @@ public class PayController {
                     params.get("app_id"),
                     params.get("seller_id")
             );
-            // 待退款也回 success，避免支付宝反复通知；人工在后台处理退款工单
+
             if (result == PaymentResult.PAID || result == PaymentResult.ALREADY_PAID
                     || result == PaymentResult.REFUND_PENDING) {
                 return "success";
