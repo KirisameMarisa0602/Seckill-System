@@ -1,21 +1,11 @@
 <script setup lang="ts">
-/**
- * 我的订单。需用户登录（路由 requiresAuth）。待支付订单可打开支付宝收银台。
- *
- * 后端接口：
- * - GET /order/list — orderApi.list
- * - GET /pay/create/{orderId} — orderApi.paymentPage，返回收银台 HTML
- *
- * 关键函数：
- * - loadOrders：分页拉取当前用户订单
- * - pay：先开空白窗口再写入 HTML，避免弹窗拦截导致无法支付
- */
-import { onMounted, ref } from 'vue'
+
+import { onMounted, reactive, ref } from 'vue'
 import { RefreshRight, Wallet } from '@element-plus/icons-vue'
-import { orderApi } from '../api'
+import { authApi, orderApi } from '../api'
 import { errorMessage } from '../api/errors'
 import StatusBanner from '../components/StatusBanner.vue'
-import type { Order } from '../types'
+import { OrderStatus, type Order } from '../types'
 
 const loading = ref(true)
 const payingId = ref('')
@@ -26,15 +16,17 @@ const total = ref(0)
 const pageError = ref('')
 const payHint = ref('')
 
-/** 订单状态文案：0 待支付，1 已支付，-1 已取消，-2 待退款。 */
+const address = reactive({ receiverName: '', receiverPhone: '', detail: '' })
+const savingAddress = ref(false)
+const addressHint = ref('')
+
 const statusMap: Record<number, { label: string; type: 'warning' | 'success' | 'info' | 'danger' }> = {
-  0: { label: '待支付', type: 'warning' },
-  1: { label: '已支付', type: 'success' },
-  [-1]: { label: '已取消', type: 'info' },
-  [-2]: { label: '待退款处理', type: 'danger' },
+  [OrderStatus.unpaid]: { label: '待支付', type: 'warning' },
+  [OrderStatus.paid]: { label: '已支付', type: 'success' },
+  [OrderStatus.canceled]: { label: '已取消', type: 'info' },
+  [OrderStatus.refundPending]: { label: '待退款处理', type: 'danger' },
 }
 
-/** 分页拉取当前用户订单。 */
 async function loadOrders() {
   loading.value = true
   pageError.value = ''
@@ -50,9 +42,45 @@ async function loadOrders() {
   }
 }
 
-/** 先开空白窗口再写入收银台 HTML，避免弹窗拦截导致无法支付。 */
+async function loadAddress() {
+  try {
+    const saved = await authApi.address()
+    address.receiverName = saved?.receiverName || ''
+    address.receiverPhone = saved?.receiverPhone || ''
+    address.detail = saved?.detail || ''
+  } catch (error) {
+    addressHint.value = errorMessage(error, '收货地址加载失败')
+  }
+}
+
+async function saveAddress() {
+  addressHint.value = ''
+  if (!/^1[3-9]\d{9}$/.test(address.receiverPhone)) {
+    addressHint.value = '请填写 11 位收货手机号'
+    return
+  }
+  if (address.receiverName.trim().length < 1 || address.detail.trim().length < 1) {
+    addressHint.value = '请填写收货人和详细地址'
+    return
+  }
+  savingAddress.value = true
+  try {
+    await authApi.saveAddress(address.receiverName.trim(), address.receiverPhone.trim(), address.detail.trim())
+    addressHint.value = '收货地址已保存，未支付订单会使用这份地址'
+    await loadOrders()
+  } catch (error) {
+    addressHint.value = errorMessage(error, '收货地址保存失败')
+  } finally {
+    savingAddress.value = false
+  }
+}
+
 async function pay(order: Order) {
   payHint.value = ''
+  if (!order.receiverDetail) {
+    payHint.value = '请先填写收货地址，再支付'
+    return
+  }
   const paymentWindow = window.open('', '_blank')
   payingId.value = order.id
   try {
@@ -70,7 +98,10 @@ async function pay(order: Order) {
   }
 }
 
-onMounted(loadOrders)
+onMounted(() => {
+  loadOrders()
+  loadAddress()
+})
 </script>
 
 <template>
@@ -83,6 +114,24 @@ onMounted(loadOrders)
       </div>
       <el-button :icon="RefreshRight" @click="loadOrders">刷新状态</el-button>
     </div>
+
+    <section class="surface address-card">
+      <div>
+        <h2>收货地址</h2>
+        <p>秒杀下单会带上默认地址。没有地址的待支付订单，保存后会补上，支付前必须填写。</p>
+      </div>
+      <div class="address-form">
+        <el-input v-model="address.receiverName" maxlength="64" placeholder="收货人" />
+        <el-input v-model="address.receiverPhone" maxlength="11" placeholder="手机号" />
+        <el-input v-model="address.detail" maxlength="255" placeholder="详细地址" />
+        <el-button type="primary" :loading="savingAddress" @click="saveAddress">保存地址</el-button>
+      </div>
+    </section>
+    <StatusBanner
+      v-if="addressHint"
+      :kind="addressHint.includes('已保存') ? 'success' : 'error'"
+      :text="addressHint"
+    />
 
     <StatusBanner v-if="pageError" kind="error" :text="pageError" />
     <StatusBanner
@@ -104,6 +153,9 @@ onMounted(loadOrders)
             <span>订单号 {{ order.id }}</span>
             <span>创建于 {{ order.createDate }}</span>
             <span v-if="order.payDate">支付于 {{ order.payDate }}</span>
+            <span v-if="order.receiverDetail">
+              {{ order.receiverName }} {{ order.receiverPhone }} {{ order.receiverDetail }}
+            </span>
           </div>
         </div>
 
@@ -113,7 +165,7 @@ onMounted(loadOrders)
         </div>
 
         <el-button
-          v-if="order.status === 0"
+          v-if="order.status === OrderStatus.unpaid"
           type="primary"
           :icon="Wallet"
           :loading="payingId === order.id"
@@ -142,6 +194,30 @@ onMounted(loadOrders)
 </template>
 
 <style scoped>
+.address-card {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 22px 26px;
+}
+
+.address-card h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.address-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.address-form {
+  display: grid;
+  grid-template-columns: 140px 160px minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
 .order-list {
   min-height: 220px;
   overflow: hidden;
@@ -202,6 +278,10 @@ onMounted(loadOrders)
 }
 
 @media (max-width: 720px) {
+  .address-form {
+    grid-template-columns: 1fr;
+  }
+
   .order-row {
     grid-template-columns: 1fr auto;
   }

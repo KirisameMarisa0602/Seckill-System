@@ -1,12 +1,3 @@
-# 按端口加载 .env.8080 / .env.8081 后启动后端。
-# Spring Boot 不会自动读这些文件。
-#
-# 用法（两个终端各开一个）：
-#   powershell -ExecutionPolicy Bypass -File .\scripts\run-local.ps1 8080
-#   powershell -ExecutionPolicy Bypass -File .\scripts\run-local.ps1 8081
-#
-# 不传参数时默认 8080。根目录的 .env 只给 docker compose 用，本脚本不读它。
-
 param(
     [Parameter(Position = 0)]
     [ValidateSet("8080", "8081")]

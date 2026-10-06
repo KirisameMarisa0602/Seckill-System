@@ -1,13 +1,5 @@
 <script setup lang="ts">
-/**
- * 用户注册页。创建账户后跳转登录，不自动写入会话。
- *
- * 后端接口：
- * - POST /user/register — authApi.register
- *
- * 关键函数：
- * - submit：校验昵称/手机号/密码与二次确认后注册
- */
+
 import { reactive, ref } from 'vue'
 import { type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
@@ -48,7 +40,6 @@ const rules: FormRules = {
   ],
 }
 
-/** 校验昵称/手机号/密码后注册，成功跳转登录页，不自动登录。 */
 async function submit() {
   formError.value = ''
   alreadyRegistered.value = false

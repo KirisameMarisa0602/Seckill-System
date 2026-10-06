@@ -1,11 +1,5 @@
 <script setup lang="ts">
-/**
- * 全局壳层：顶栏导航、账号区、主内容区与页脚。本身不调后端接口，登录态来自 Pinia auth store。
- *
- * 关键 computed / 函数：
- * - activePath：把 `/goods/:id` 归到会场高亮、`/admin*` 归到后台高亮
- * - logout：清用户会话并回到首页（不影响管理员 Token）
- */
+
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Management, ShoppingBag, Tickets, User } from '@element-plus/icons-vue'
@@ -19,7 +13,6 @@ const router = useRouter()
 const auth = useAuthStore()
 const flash = ref<BannerState | null>(null)
 
-/** 把 `/goods/:id` 归到会场高亮、`/admin*` 归到后台高亮。 */
 const activePath = computed(() => {
   if (route.path.startsWith('/goods')) return '/'
   if (route.path.startsWith('/admin')) return '/admin'
@@ -34,7 +27,6 @@ watch(
   { immediate: true },
 )
 
-/** 清用户会话并回到首页；不影响管理员 Token。 */
 function logout() {
   auth.logoutUser()
   flash.value = { kind: 'info', text: '已退出登录' }

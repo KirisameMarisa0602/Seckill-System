@@ -1,9 +1,5 @@
-/**
- * 把 Axios / RespBean 失败收成带业务码的 Error，页面用 `message` 展示即可。
- */
 import axios from 'axios'
 
-/** 对应后端 `RespBean.code`；网络层失败用 HTTP 状态或 0。 */
 export class ApiError extends Error {
   readonly code: number
 
@@ -14,19 +10,16 @@ export class ApiError extends Error {
   }
 }
 
-/** 取出可读文案；优先后端 `message`。 */
 export function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error && error.message) return error.message
   return fallback
 }
 
-/** 取出业务码；非 {@link ApiError} 时返回 0。 */
 export function errorCode(error: unknown) {
   return error instanceof ApiError ? error.code : 0
 }
 
-/** Axios 失败、HTTP 4xx 里的 JSON、纯文本 CORS 拒绝都转成 {@link ApiError}。 */
 export function toApiError(error: unknown, fallback: string): ApiError {
   if (error instanceof ApiError) return error
   if (axios.isAxiosError(error)) {

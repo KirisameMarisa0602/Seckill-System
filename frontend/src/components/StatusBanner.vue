@@ -1,7 +1,5 @@
 <script setup lang="ts">
-/**
- * 页内结果条。不依赖 Element Plus 的 toast 传送门，Cursor 内置浏览器也能看见。
- */
+
 import type { BannerKind } from '../feedback'
 
 defineProps<{

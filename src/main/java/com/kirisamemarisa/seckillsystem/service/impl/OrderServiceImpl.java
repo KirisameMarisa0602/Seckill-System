@@ -2,10 +2,13 @@ package com.kirisamemarisa.seckillsystem.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
+import com.kirisamemarisa.seckillsystem.entity.DeliveryAddress;
 import com.kirisamemarisa.seckillsystem.entity.OrderInfo;
+import com.kirisamemarisa.seckillsystem.entity.OrderStatus;
 import com.kirisamemarisa.seckillsystem.entity.PaymentRecord;
 import com.kirisamemarisa.seckillsystem.entity.SeckillGoods;
 import com.kirisamemarisa.seckillsystem.entity.SeckillOrder;
+import com.kirisamemarisa.seckillsystem.exception.InsufficientStockException;
 import com.kirisamemarisa.seckillsystem.mapper.GoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.OrderInfoMapper;
 import com.kirisamemarisa.seckillsystem.mapper.PaymentRecordMapper;
@@ -13,6 +16,7 @@ import com.kirisamemarisa.seckillsystem.mapper.SeckillGoodsMapper;
 import com.kirisamemarisa.seckillsystem.mapper.SeckillOrderMapper;
 import com.kirisamemarisa.seckillsystem.redis.GoodsKey;
 import com.kirisamemarisa.seckillsystem.redis.OrderKey;
+import com.kirisamemarisa.seckillsystem.service.DeliveryAddressService;
 import com.kirisamemarisa.seckillsystem.service.IOrderService;
 import com.kirisamemarisa.seckillsystem.service.PaymentResult;
 import com.kirisamemarisa.seckillsystem.vo.GoodsVo;
@@ -27,10 +31,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
-/**
- * {@link IOrderService} 实现。订单 {@code t_order}、一人一单 {@code t_seckill_order}、支付流水 {@code t_payment_record}。
- * 秒杀库存下单时预扣；主库存在支付成功时才扣。关单与支付回调靠 {@code FOR UPDATE} 互斥。
- */
 @Slf4j
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> implements IOrderService {
@@ -48,31 +48,31 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
 
     @Autowired private PaymentRecordMapper paymentRecordMapper;
 
-    /**
-     * 创建秒杀订单：事务内预扣秒杀库存、插普通订单和一人一单行；成功后写 Redis 订单缓存。
-     */
+    @Autowired private DeliveryAddressService deliveryAddressService;
+
     @Override
-    public OrderInfo createSeckillOrder(Long userId, GoodsVo goods) {
+    public OrderInfo createSeckillOrder(Long userId, GoodsVo goods, String eventId) {
         OrderInfo orderInfo = transactionTemplate.execute(status -> {
-            // WHERE stock_count > 0 的条件更新：影响行数 < 1 说明并发下已被抢光
+
             int updateRows = seckillGoodsMapper.decrementStock(goods.getId());
-            if (updateRows < 1) { throw new RuntimeException("库存不足"); }
+            if (updateRows < 1) { throw new InsufficientStockException(); }
             OrderInfo info = new OrderInfo();
             info.setUserId(userId);
             info.setGoodsId(goods.getId());
-            info.setDeliveryAddrId(0L);
+            applyAddress(info, deliveryAddressService.findDefault(userId));
             info.setGoodsName(goods.getGoodsName());
             info.setGoodsCount(1);
             info.setGoodsPrice(goods.getSeckillPrice());
             info.setOrderChannel(1);
-            info.setStatus(0);
+            info.setStatus(OrderStatus.UNPAID.code());
             info.setCreateDate(LocalDateTime.now());
             this.baseMapper.insert(info);
             SeckillOrder seckillOrder = new SeckillOrder();
             seckillOrder.setUserId(userId);
             seckillOrder.setOrderId(info.getId());
             seckillOrder.setGoodsId(goods.getId());
-            // (user_id, goods_id) 唯一索引：重复抢购在这里让整段事务回滚
+            seckillOrder.setEventId(eventId);
+
             seckillOrderMapper.insert(seckillOrder);
             return info;
         });
@@ -83,9 +83,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return orderInfo;
     }
 
-    /**
-     * 查该用户对该商品是否已有秒杀订单。无则返回 {@code null}。
-     */
     @Override
     public Long findSeckillOrderId(Long userId, Long goodsId) {
         SeckillOrder order = seckillOrderMapper.selectOne(new QueryWrapper<SeckillOrder>()
@@ -95,23 +92,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return order == null ? null : order.getOrderId();
     }
 
-    /**
-     * 超时关单：仅待支付单改为已取消，回补秒杀库存并清 Redis 一人一单标记。
-     */
     @Override
     public void cancelTimeoutOrder(Long orderId) {
         final OrderInfo[] canceledOrder = new OrderInfo[1];
         Boolean isCanceled = transactionTemplate.execute(status -> {
-            // FOR UPDATE 锁行，与 paySuccess 互斥，避免「一边关单一边入账」
+
             OrderInfo orderInfo = this.baseMapper.selectByIdForUpdate(orderId);
-            if (orderInfo == null || !Integer.valueOf(0).equals(orderInfo.getStatus())) {
+            if (orderInfo == null || !OrderStatus.UNPAID.same(orderInfo.getStatus())) {
                 return false;
             }
-            orderInfo.setStatus(-1);
+            orderInfo.setStatus(OrderStatus.CANCELED.code());
             this.baseMapper.updateById(orderInfo);
-            // 删秒杀订单行，释放一人一单占用，用户可再抢
+
             seckillOrderMapper.delete(new QueryWrapper<SeckillOrder>().eq("order_id", orderId));
-            // 只回补秒杀预扣库存；主库存支付前尚未扣除
+
             if(seckillGoodsMapper.selectOne(new QueryWrapper<SeckillGoods>().eq("goods_id", orderInfo.getGoodsId())) != null) {
                 seckillGoodsMapper.incrementStock(orderInfo.getGoodsId());
             }
@@ -129,14 +123,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         }
     }
 
-    /**
-     * 支付宝异步通知入账。金额匹配且待支付则扣主库存并置已支付；关单后到账或主库存不足则待退款。
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PaymentResult paySuccess(Long orderId, String tradeNo, BigDecimal amount,
                                     String appId, String sellerId) {
-        // trade_no 唯一：同一笔支付宝通知重放时按已有流水返回，保证幂等
+
         PaymentRecord existing = paymentRecordMapper.selectOne(
                 new QueryWrapper<PaymentRecord>().eq("trade_no", tradeNo));
         if (existing != null) {
@@ -156,30 +147,28 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             return PaymentResult.INVALID_NOTIFICATION;
         }
 
-        if (Integer.valueOf(1).equals(orderInfo.getStatus())) {
+        if (OrderStatus.PAID.same(orderInfo.getStatus())) {
             savePaymentRecord(orderInfo, tradeNo, amount, appId, sellerId, "PAID");
             return PaymentResult.ALREADY_PAID;
         }
 
-        // 非待支付（通常已超时取消）：改 -2 待退款，不能把钱当成有效成交
-        if (!Integer.valueOf(0).equals(orderInfo.getStatus())) {
-            orderInfo.setStatus(-2);
+        if (!OrderStatus.UNPAID.same(orderInfo.getStatus())) {
+            orderInfo.setStatus(OrderStatus.REFUND_PENDING.code());
             this.baseMapper.updateById(orderInfo);
             savePaymentRecord(orderInfo, tradeNo, amount, appId, sellerId, "REFUND_PENDING");
             log.error("订单 {} 在取消后收到付款，已进入待退款工单状态", orderId);
             return PaymentResult.REFUND_PENDING;
         }
 
-        // 主库存在支付成功时才扣；秒杀库存下单时已预扣。主库存没了则待退款
         if (goodsMapper.decrementGoodsStock(orderInfo.getGoodsId()) < 1) {
-            orderInfo.setStatus(-2);
+            orderInfo.setStatus(OrderStatus.REFUND_PENDING.code());
             this.baseMapper.updateById(orderInfo);
             savePaymentRecord(orderInfo, tradeNo, amount, appId, sellerId, "REFUND_PENDING");
             log.error("订单 {} 已付款但主库存不足，已进入待退款工单状态", orderId);
             return PaymentResult.REFUND_PENDING;
         }
 
-        orderInfo.setStatus(1);
+        orderInfo.setStatus(OrderStatus.PAID.code());
         orderInfo.setPayDate(LocalDateTime.now());
         this.baseMapper.updateById(orderInfo);
         savePaymentRecord(orderInfo, tradeNo, amount, appId, sellerId, "PAID");
@@ -187,7 +176,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         return PaymentResult.PAID;
     }
 
-    /** 插入支付流水。{@code t_payment_record.trade_no} 唯一，并发双插会让本事务失败回滚。 */
     private void savePaymentRecord(OrderInfo orderInfo, String tradeNo, BigDecimal amount,
                                    String appId, String sellerId, String status) {
         PaymentRecord record = new PaymentRecord();
@@ -200,5 +188,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         record.setCreateDate(LocalDateTime.now());
         record.setUpdateDate(LocalDateTime.now());
         paymentRecordMapper.insert(record);
+    }
+
+    private void applyAddress(OrderInfo orderInfo, DeliveryAddress address) {
+        if (address == null) {
+            orderInfo.setDeliveryAddrId(0L);
+            return;
+        }
+        orderInfo.setDeliveryAddrId(address.getId());
+        orderInfo.setReceiverName(address.getReceiverName());
+        orderInfo.setReceiverPhone(address.getReceiverPhone());
+        orderInfo.setReceiverDetail(address.getDetail());
     }
 }

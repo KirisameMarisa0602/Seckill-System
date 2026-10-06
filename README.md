@@ -55,7 +55,7 @@ C 端可注册登录、看会场、过验证码抢购、轮询结果、打开收
 - MyBatis-Plus 3.5 / MySQL 9 / Flyway 版本化建表
 - Redis（Lettuce 连接池）+ 自管 Key 前缀；Lua：预扣库存、限流、回滚
 - Redisson：布隆过滤器、分布式锁、令牌桶、延迟双删队列
-- RabbitMQ：下单队列、错误死信重试、TTL 延迟关单、主库存补偿
+- RabbitMQ：下单队列、错误死信重试、TTL 延迟关单
 - Redis Outbox（ZSET + HASH）保证「预扣成功必投递」
 - Caffeine 进程内售罄缓存
 - 支付宝开放平台 SDK（电脑网站支付 + 异步 notify）
