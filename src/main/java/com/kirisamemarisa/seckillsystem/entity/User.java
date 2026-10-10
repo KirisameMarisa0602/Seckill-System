@@ -27,9 +27,6 @@ public class User implements Serializable {
     @JsonIgnore
     private String password;
 
-    @JsonIgnore
-    private String salt;
-
     private String head;
 
     private LocalDateTime registerDate;
