@@ -2,7 +2,6 @@ CREATE TABLE IF NOT EXISTS t_user (
     id BIGINT NOT NULL,
     nickname VARCHAR(64) NOT NULL,
     password VARCHAR(100) NOT NULL,
-    salt VARCHAR(32) NULL,
     head VARCHAR(512) NULL,
     register_date DATETIME(3) NOT NULL,
     last_login_date DATETIME(3) NULL,

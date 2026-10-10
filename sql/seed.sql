@@ -15,14 +15,14 @@ SET FOREIGN_KEY_CHECKS = 1;
 INSERT INTO t_admin (username, password) VALUES
 ('admin', '$2b$12$rlCi/Qx.inD2wOhOCpbGweLZ/y7DvYx0BT8F2mz/SOUSrTdkrtb.i');
 
-INSERT INTO t_user (id, nickname, password, salt, head, register_date, last_login_date) VALUES
-(13800138001, '测试用户甲', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta', NULL,
+INSERT INTO t_user (id, nickname, password, head, register_date, last_login_date) VALUES
+(13800138001, '测试用户甲', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta',
  'https://api.dicebear.com/7.x/avataaars/svg?seed=13800138001', DATE_SUB(NOW(3), INTERVAL 30 DAY), DATE_SUB(NOW(3), INTERVAL 2 HOUR)),
-(13800138002, '测试用户乙', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta', NULL,
+(13800138002, '测试用户乙', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta',
  'https://api.dicebear.com/7.x/avataaars/svg?seed=13800138002', DATE_SUB(NOW(3), INTERVAL 20 DAY), DATE_SUB(NOW(3), INTERVAL 1 DAY)),
-(13900139001, '测试用户丙', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta', NULL,
+(13900139001, '测试用户丙', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta',
  'https://api.dicebear.com/7.x/avataaars/svg?seed=13900139001', DATE_SUB(NOW(3), INTERVAL 10 DAY), DATE_SUB(NOW(3), INTERVAL 30 MINUTE)),
-(15800158001, '测试用户丁', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta', NULL,
+(15800158001, '测试用户丁', '$2b$12$i3ogNIVm3/uno9j1SmAe3O3DyEQn6dQvsCtvAlog7ANpeTuxYiOta',
  'https://api.dicebear.com/7.x/avataaars/svg?seed=15800158001', DATE_SUB(NOW(3), INTERVAL 7 DAY), DATE_SUB(NOW(3), INTERVAL 5 HOUR));
 
 INSERT INTO t_goods (goods_name, goods_title, goods_img, goods_detail, goods_price, goods_stock) VALUES

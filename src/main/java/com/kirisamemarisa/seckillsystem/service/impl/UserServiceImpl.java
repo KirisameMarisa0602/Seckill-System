@@ -5,7 +5,6 @@ import com.kirisamemarisa.seckillsystem.entity.User;
 import com.kirisamemarisa.seckillsystem.mapper.UserMapper;
 import com.kirisamemarisa.seckillsystem.redis.UserKey;
 import com.kirisamemarisa.seckillsystem.service.IUserService;
-import com.kirisamemarisa.seckillsystem.utils.MD5Util;
 import com.kirisamemarisa.seckillsystem.vo.LoginVo;
 import com.kirisamemarisa.seckillsystem.vo.RegisterVo;
 import com.kirisamemarisa.seckillsystem.vo.RespBean;
@@ -31,7 +30,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String mobile = loginVo.getMobile();
         String pass = loginVo.getPassword();
         User user = userMapper.selectById(Long.valueOf(mobile));
-        if (user == null || !passwordMatchesAndUpgrade(user, pass)) {
+        if (user == null || !passwordEncoder.matches(pass, user.getPassword())) {
             return RespBean.error(RespBeanEnum.LOGIN_ERROR);
         }
         user.setLastLoginDate(LocalDateTime.now());
@@ -54,30 +53,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         User user = new User();
         user.setId(Long.valueOf(mobile));
         user.setNickname(registerVo.getNickname());
-        user.setSalt(null);
         user.setPassword(passwordEncoder.encode(registerVo.getPassword()));
         user.setHead("https://api.dicebear.com/7.x/avataaars/svg?seed=" + mobile);
         user.setRegisterDate(LocalDateTime.now());
         userMapper.insert(user);
         return RespBean.success("注册成功");
-    }
-
-    private boolean passwordMatchesAndUpgrade(User user, String submittedPassword) {
-        String stored = user.getPassword();
-        if (stored != null && stored.startsWith("$2")) {
-            return passwordEncoder.matches(submittedPassword, stored);
-        }
-        String salt = user.getSalt();
-        if (stored == null || salt == null || salt.length() < 6) {
-            return false;
-        }
-        boolean matched = MD5Util.formPassToDBPass(submittedPassword, salt).equals(stored)
-                || MD5Util.inputPassToDBPass(submittedPassword, salt).equals(stored);
-        if (matched) {
-            user.setPassword(passwordEncoder.encode(submittedPassword));
-            user.setSalt(null);
-            userMapper.updateById(user);
-        }
-        return matched;
     }
 }
